@@ -1,0 +1,12 @@
+# 1. Disable Directory Browsing (Security)
+Options -Indexes
+
+# 2. Prevent viewing of hidden files (like this .htaccess file)
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# 3. Custom 404 Error Document
+# Note: This path is absolute from your localhost root
+ErrorDocument 404 /nielit-bbsr-mock/public/404.php

@@ -1,0 +1,9 @@
+# Root .htaccess - DO NOTHING, just pass through
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    # Don't redirect anything - let the public folder handle it
+    RewriteRule .* - [L]
+</IfModule>
+
+# Disable directory browsing
+Options -Indexes

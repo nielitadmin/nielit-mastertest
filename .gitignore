@@ -1,0 +1,11 @@
+# Ignore uploaded files/images
+public/uploads/
+public/assets/uploads/
+
+# Ignore config files if they have hardcoded passwords/API keys
+# (If you do this, make sure to create a config.example.php for GitHub!)
+# config/database.php
+# config/mailer.php
+
+# Ignore macOS system files
+.DS_Store

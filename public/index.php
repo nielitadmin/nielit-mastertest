@@ -12,7 +12,7 @@ session_destroy();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NIELIT Bhubaneswar — Computer Based Test System</title>
+    <title>NIELIT Mock Assessment Platform</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@500;600;700&display=swap" rel="stylesheet">
@@ -192,20 +192,20 @@ session_destroy();
 
         /* --- 5. SPLIT SCREEN LAYOUT --- */
         .wrapper {
-            flex: 1; display: flex; align-items: center; justify-content: space-between;
-            max-width: 1300px; margin: 0 auto; width: 100%; padding: 40px; gap: 40px;
+            display: flex; align-items: center; justify-content: space-between;
+            max-width: 1300px; margin: 0 auto; width: 100%; padding: 40px 40px 20px 40px; gap: 40px;
             z-index: 10;
         }
 
-        .hero { flex: 1.2; animation: fadeRight 0.8s ease both; max-width: 550px;}
+        .hero { flex: 1.2; animation: fadeRight 0.8s ease both; max-width: 580px;}
         .hero-title { font-size: 42px; font-weight: 800; color: var(--text-dark); letter-spacing: -1px; line-height: 1.1; margin-bottom: 15px;}
         .hero-title span { color: var(--primary); }
-        .hero-sub { font-size: 16px; color: var(--text-muted); font-weight: 500; line-height: 1.6; margin-bottom: 30px;}
+        .hero-sub { font-size: 15px; color: var(--text-muted); font-weight: 500; line-height: 1.6; margin-bottom: 25px;}
         
         .system-badge {
             display: inline-flex; align-items: center; gap: 8px; background: white; border: 1px solid var(--border);
             padding: 8px 16px; border-radius: 50px; font-size: 13px; font-weight: 800;
-            color: var(--candidate); box-shadow: var(--shadow-sm); margin-bottom: 40px;
+            color: var(--candidate); box-shadow: var(--shadow-sm); margin-bottom: 30px;
         }
         .live-dot { width: 8px; height: 8px; background: var(--candidate); border-radius: 50%; box-shadow: 0 0 12px var(--candidate); animation: pulse 2s infinite; }
         @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.2); } 100% { opacity: 1; transform: scale(1); } }
@@ -244,11 +244,45 @@ session_destroy();
         .ac-text h2 { font-size: 20px; font-weight: 800; color: var(--text-dark); margin-bottom: 6px; }
         .ac-text p { font-size: 13px; color: var(--text-muted); font-weight: 500; line-height: 1.5; margin: 0;}
 
-        /* --- 6. FOOTER --- */
+        /* --- 6. PLATFORM DETAILS (NEW) --- */
+        .platform-details {
+            max-width: 1300px; margin: 0 auto; width: 100%; padding: 20px 40px 60px 40px;
+            z-index: 10; position: relative; animation: fadeUp 0.8s ease both; animation-delay: 0.4s;
+        }
+        .section-title { font-size: 28px; font-weight: 800; text-align: center; margin-bottom: 30px; letter-spacing: -0.5px; }
+        
+        .features-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; margin-bottom: 40px;
+        }
+        .feature-box {
+            background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(15px); border: 1px solid white;
+            padding: 25px; border-radius: 20px; box-shadow: var(--shadow-sm); display: flex; gap: 15px;
+            transition: 0.3s;
+        }
+        .feature-box:hover { background: #FFFFFF; transform: translateY(-3px); box-shadow: var(--shadow-md); }
+        .f-icon {
+            width: 45px; height: 45px; border-radius: 12px; background: var(--primary-bg); color: var(--primary);
+            display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;
+        }
+        .f-content h3 { font-size: 16px; font-weight: 800; margin-bottom: 8px; color: var(--text-dark); }
+        .f-content ul { list-style: none; padding: 0; margin: 0;}
+        .f-content ul li { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; display: flex; align-items: flex-start; gap: 6px; }
+        .f-content ul li::before { content: "•"; color: var(--primary-light); font-weight: bold; }
+
+        .benefits-card {
+            background: linear-gradient(135deg, var(--primary), #1E3A8A); color: white; border-radius: 24px;
+            padding: 35px 40px; display: flex; flex-direction: column; gap: 20px; box-shadow: 0 20px 40px -10px rgba(21, 94, 117, 0.3);
+        }
+        .benefits-card h3 { font-size: 24px; font-weight: 800; display: flex; align-items: center; gap: 10px; }
+        .benefits-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; }
+        .benefit-item { display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 500; background: rgba(255,255,255,0.1); padding: 15px; border-radius: 12px;}
+        .benefit-item i { color: #34D399; font-size: 18px; }
+
+        /* --- 7. FOOTER --- */
         .footer { 
             display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
             padding: 15px 40px; background: white; border-top: 1px solid var(--border);
-            font-size: 12px; font-weight: 600; color: var(--text-muted); z-index: 10;
+            font-size: 12px; font-weight: 600; color: var(--text-muted); z-index: 10; margin-top: auto;
         }
         .footer-links { display: flex; gap: 20px; flex-wrap: wrap;}
         .footer-links a { color: var(--text-muted); text-decoration: none; transition: 0.2s; }
@@ -257,6 +291,7 @@ session_destroy();
         /* ANIMATIONS */
         @keyframes fadeRight { from { opacity: 0; transform: translateX(-30px); } to { opacity: 1; transform: translateX(0); } }
         @keyframes fadeLeft { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
 
         /* ==========================================================================
            RESPONSIVE MEDIA QUERIES
@@ -264,11 +299,12 @@ session_destroy();
 
         /* Tablets & Small Laptops */
         @media (max-width: 1024px) {
-            .wrapper { flex-direction: column; padding: 40px 20px; gap: 40px;}
+            .wrapper { flex-direction: column; padding: 40px 20px 20px 20px; gap: 40px;}
             .hero { max-width: 100%; text-align: center; }
             .hero-title { font-size: 38px; }
             .stats-row { justify-content: center; }
-            .login-section { max-width: 100%; width: 100%; flex-direction: row; } /* Side-by-side cards on tablet */
+            .login-section { max-width: 100%; width: 100%; flex-direction: row; } 
+            .platform-details { padding: 20px; }
         }
 
         /* Large Mobile & Portrait Tablets */
@@ -284,11 +320,9 @@ session_destroy();
             .nav-container { padding: 10px 20px; }
             .mobile-menu-btn { display: block; }
             .nav-links { 
-                display: none; /* Hidden by default on mobile */
-                width: 100%; flex-direction: column; align-items: flex-start;
-                padding-bottom: 15px;
+                display: none; width: 100%; flex-direction: column; align-items: flex-start; padding-bottom: 15px;
             }
-            .nav-links.active { display: flex; } /* Shown when toggled */
+            .nav-links.active { display: flex; }
             .nav-link { width: 100%; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
             
             /* Fix Dropdown on Mobile */
@@ -302,7 +336,7 @@ session_destroy();
             .dropdown-content a:hover { background: rgba(255,255,255,0.1); color: #FFFFFF; }
 
             /* Fix Body Content */
-            .login-section { flex-direction: column; } /* Stack cards on mobile */
+            .login-section { flex-direction: column; }
             .action-card { padding: 20px; }
             .footer { flex-direction: column; gap: 10px; text-align: center; justify-content: center; }
             .footer-links { justify-content: center; }
@@ -311,10 +345,11 @@ session_destroy();
         /* Small Mobile Phones */
         @media (max-width: 480px) {
             .hero-title { font-size: 32px; }
-            .stat { min-width: 45%; padding: 10px; } /* Create a 2x2 grid for stats */
+            .stat { min-width: 45%; padding: 10px; } 
             .stat-num { font-size: 20px; }
             .action-card { flex-direction: column; text-align: center; gap: 10px;}
-            .action-card .fa-chevron-right { display: none; } /* Hide chevron when stacked */
+            .action-card .fa-chevron-right { display: none; }
+            .benefits-card { padding: 25px 20px; }
         }
     </style>
 </head>
@@ -408,8 +443,8 @@ session_destroy();
                 <span class="live-dot"></span> System Online
             </div>
             
-            <h1 class="hero-title">Computer Based<br><span>Mock Test & Examination  Portal</span></h1>
-            <p class="hero-sub">A secure, scalable, and transparent Mock test assessment platform designed exclusively for NIELIT candidates and authorized Training Partners for taking pre NSQF/Short term course examination.</p>
+            <h1 class="hero-title">NIELIT Mock<br><span>Assessment Platform</span></h1>
+            <p class="hero-sub">A secure, scalable, and transparent mock assessment platform designed exclusively for candidates of National Institute of Electronics & Information Technology (NIELIT) and its authorized Training Partners. This platform enables pre-assessment preparation for NSQF-aligned and short-term courses, ensuring candidates are fully equipped before appearing in official examinations.</p>
 
             <div class="stats-row">
                 <div class="stat">
@@ -448,6 +483,94 @@ session_destroy();
         </div>
 
     </main>
+
+    <section class="platform-details">
+        <h2 class="section-title">Platform Features</h2>
+        
+        <div class="features-grid">
+            <div class="feature-box">
+                <div class="f-icon"><i class="fas fa-shield-alt"></i></div>
+                <div class="f-content">
+                    <h3>Secure Examination Environment</h3>
+                    <ul>
+                        <li>End-to-end encryption for data protection</li>
+                        <li>AI-based proctoring and identity verification</li>
+                        <li>Browser lockdown to prevent malpractice</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="feature-box">
+                <div class="f-icon"><i class="fas fa-server"></i></div>
+                <div class="f-content">
+                    <h3>Scalable Infrastructure</h3>
+                    <ul>
+                        <li>Cloud-based system supporting thousands of users</li>
+                        <li>Load balancing for uninterrupted delivery</li>
+                        <li>Optimized performance across all devices</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="feature-box">
+                <div class="f-icon"><i class="fas fa-check-circle"></i></div>
+                <div class="f-content">
+                    <h3>Transparent Evaluation</h3>
+                    <ul>
+                        <li>Automated, unbiased assessment with instant results</li>
+                        <li>Detailed performance analytics and breakdowns</li>
+                        <li>Complete audit logs for full traceability</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="feature-box">
+                <div class="f-icon"><i class="fas fa-users-cog"></i></div>
+                <div class="f-content">
+                    <h3>Role-Based Access</h3>
+                    <ul>
+                        <li>Dedicated dashboards for all user roles</li>
+                        <li>Training Partners can manage mock tests</li>
+                        <li>Admin controls for monitoring and compliance</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="feature-box">
+                <div class="f-icon"><i class="fas fa-book-open"></i></div>
+                <div class="f-content">
+                    <h3>NSQF-Aligned Assessments</h3>
+                    <ul>
+                        <li>Structured as per National Skills Qualifications framework</li>
+                        <li>Question banks mapped to curriculum levels</li>
+                        <li>Real exam simulation with timed sessions</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="feature-box">
+                <div class="f-icon"><i class="fas fa-chart-pie"></i></div>
+                <div class="f-content">
+                    <h3>Reporting & Insights</h3>
+                    <ul>
+                        <li>Individual and batch-wise performance tracking</li>
+                        <li>Weak-area identification for improvement</li>
+                        <li>Exportable reports for institutional use</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="benefits-card">
+            <h3><i class="fas fa-star"></i> Core Benefits</h3>
+            <div class="benefits-grid">
+                <div class="benefit-item"><i class="fas fa-check-circle"></i> Enhances candidate confidence and exam readiness.</div>
+                <div class="benefit-item"><i class="fas fa-check-circle"></i> Improves pass rates in NIELIT certification exams.</div>
+                <div class="benefit-item"><i class="fas fa-check-circle"></i> Ensures absolute fairness, reliability, and accountability.</div>
+                <div class="benefit-item"><i class="fas fa-check-circle"></i> Supports Training Partners in delivering quality education.</div>
+            </div>
+        </div>
+    </section>
 
     <footer class="footer">
         <p>&copy; <?php echo date('Y'); ?> NIELIT Bhubaneswar. All Rights Reserved.</p>

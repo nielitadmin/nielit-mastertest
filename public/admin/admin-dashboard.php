@@ -465,12 +465,6 @@ try {
                     <a href="manage-users.php" class="btn-modern">
                         <i class="fas fa-user-plus"></i> Users
                     </a>
-                    <a href="manage-exams.php" class="btn-modern">
-                        <i class="fas fa-calendar-plus"></i> Exams
-                    </a>
-                    <a href="manage-questions.php" class="btn-modern">
-                        <i class="fas fa-pen-square"></i> Questions
-                    </a>
                     <a href="reports.php" class="btn-modern">
                         <i class="fas fa-chart-pie"></i> Reports
                     </a>

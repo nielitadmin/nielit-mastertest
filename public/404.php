@@ -314,7 +314,7 @@ http_response_code(404);
     </div>
 
     <div class="btn-wrap">
-        <a href="/nielit-bbsr-mock/public/index.php" class="btn-home">
+        <a href="/index.php" class="btn-home">
             Return to Base
             <span class="btn-arrow">→</span>
         </a>

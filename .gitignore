@@ -2,7 +2,7 @@
 # NIELIT CBT System — .gitignore
 # ============================================================
 
-# --- Sensitive Config Files ---
+# --- Sensitive Config Files (server-only, never commit) ---
 config/mailer.php
 app/config/database-config.php
 app/config/email-config.php

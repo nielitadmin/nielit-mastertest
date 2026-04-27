@@ -1,10 +1,11 @@
-<?php 
-return [ 
-    'host' => 'localhost', 
-    'port' => '5432', 
-    'dbname' => 'nielit_cbt_mock', 
-    'username' => 'nielit_admin', 
-    'password' => 'NIELIT@BBSR2024', 
-    'sslmode' => 'prefer' 
-]; 
-?> 
+<?php
+return [
+    'driver' => 'mysql',
+    'host' => 'localhost',
+    'port' => '3306',
+    'dbname' => 'nielit_cbt_mock',
+    'username' => 'root',
+    'password' => '',
+    'charset' => 'utf8mb4'
+];
+?>

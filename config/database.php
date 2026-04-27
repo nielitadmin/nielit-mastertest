@@ -2,12 +2,17 @@
 // Force PHP to Indian Standard Time
 date_default_timezone_set('Asia/Kolkata');
 
+// Load canonical DB settings from app config.
+$dbConfig = require __DIR__ . '/../app/config/database-config.php';
+
 // Database Credentials
-$host   = 'localhost';
-$port   = '5432';
-$dbname = 'nielit_cbt_mock';
-$dbuser = 'nielit_admin';
-$dbpass = 'NIELIT@BBSR2024';
+$driver = $dbConfig['driver'] ?? 'mysql';
+$host   = $dbConfig['host'] ?? 'localhost';
+$port   = $dbConfig['port'] ?? '3306';
+$dbname = $dbConfig['dbname'] ?? 'nielit_cbt_mock';
+$dbuser = $dbConfig['username'] ?? '';
+$dbpass = $dbConfig['password'] ?? '';
+$charset = $dbConfig['charset'] ?? 'utf8mb4';
 
 try {
     // Advanced PDO Options for High Performance
@@ -18,11 +23,13 @@ try {
         PDO::ATTR_EMULATE_PREPARES   => false                   // Native prepared statements for security
     ];
 
-    // Create the connection
-    $pdo = new PDO("pgsql:host=$host;port=$port;dbname=$dbname", $dbuser, $dbpass, $options);
-    
-    // Sync PostgreSQL timezone with PHP
-    $pdo->exec("SET TIME ZONE 'Asia/Kolkata'");
+    if ($driver === 'pgsql') {
+        $pdo = new PDO("pgsql:host=$host;port=$port;dbname=$dbname", $dbuser, $dbpass, $options);
+        $pdo->exec("SET TIME ZONE 'Asia/Kolkata'");
+    } else {
+        $pdo = new PDO("mysql:host=$host;port=$port;dbname=$dbname;charset=$charset", $dbuser, $dbpass, $options);
+        $pdo->exec("SET time_zone = '+05:30'");
+    }
     
 } catch (PDOException $e) {
     // If the database goes offline, gracefully stop the script instead of leaking credentials

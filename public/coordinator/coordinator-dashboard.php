@@ -46,7 +46,7 @@ try {
             // Create Live Session
             $sessStmt = $pdo->prepare("
                 INSERT INTO exam_sessions (exam_code, category_id, center_id, exam_date, start_time, end_time, total_seats, is_active, is_practice, exam_conductor, booking_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, true, false, ?, ?) RETURNING id
+                VALUES (?, ?, ?, ?, ?, ?, ?, true, false, ?, ?)
             ");
             $sessStmt->execute([
                 $exam_code, $booking['category_id'], $center_id, 
@@ -54,7 +54,7 @@ try {
                 $booking['estimated_candidates'] + 5,
                 $exam_conductor, $booking_id
             ]);
-            $new_session_id = $sessStmt->fetchColumn();
+            $new_session_id = (int)$pdo->lastInsertId();
 
             // Enroll TP Students
             $candidates = json_decode($booking['selected_candidates'], true);

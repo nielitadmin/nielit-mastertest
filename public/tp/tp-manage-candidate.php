@@ -43,10 +43,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_candidate'])) {
         $hash = password_hash($default_password, PASSWORD_DEFAULT);
         $stmt = $pdo->prepare("
             INSERT INTO users (username, password_hash, email, full_name, role, is_active, created_at) 
-            VALUES (?, ?, ?, ?, 'candidate', true, NOW()) RETURNING id
+            VALUES (?, ?, ?, ?, 'candidate', true, NOW())
         ");
         $stmt->execute([$username, $hash, $email, $full_name]);
-        $new_user_id = $stmt->fetchColumn();
+        $new_user_id = (int)$pdo->lastInsertId();
         
         // 3. Generate Official Registration Number
         $reg_number = 'NIELIT' . date('Y') . str_pad($new_user_id, 5, '0', STR_PAD_LEFT);

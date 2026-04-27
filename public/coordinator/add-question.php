@@ -91,31 +91,31 @@ try {
             // Insert question
             $stmt = $pdo->prepare("
                 INSERT INTO questions (category_id, question_text, question_type, difficulty_level, marks, explanation, created_by, created_at, is_active)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), true) RETURNING id
+                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), true)
             ");
             $stmt->execute([$category_id, $question_text, $question_type, $difficulty_level, $marks, $explanation, $_SESSION['user_id']]);
-            $question_id = $stmt->fetchColumn();
+            $question_id = (int)$pdo->lastInsertId();
             
             // Handle options
             if ($question_type == 'mcq' && isset($_POST['options'])) {
                 $opt_stmt = $pdo->prepare("
                     INSERT INTO question_options (question_id, option_text, is_correct, option_order)
-                    VALUES (?, ?, ?::boolean, ?)
+                    VALUES (?, ?, ?, ?)
                 ");
                 
                 $order = 1;
                 foreach ($_POST['options'] as $option) {
                     if (!empty(trim($option['text'] ?? ''))) {
-                        $is_correct = (isset($option['is_correct']) && $option['is_correct'] === 'on') ? 'true' : 'false';
+                        $is_correct = (isset($option['is_correct']) && $option['is_correct'] === 'on') ? 1 : 0;
                         $opt_stmt->execute([$question_id, trim($option['text']), $is_correct, $order]);
                         $order++;
                     }
                 }
             } elseif ($question_type == 'true_false') {
                 $tf_correct = $_POST['tf_correct'] ?? 'true';
-                $opt_stmt = $pdo->prepare("INSERT INTO question_options (question_id, option_text, is_correct, option_order) VALUES (?, ?, ?::boolean, ?)");
-                $opt_stmt->execute([$question_id, 'True', ($tf_correct == 'true') ? 'true' : 'false', 1]);
-                $opt_stmt->execute([$question_id, 'False', ($tf_correct == 'false') ? 'true' : 'false', 2]);
+                $opt_stmt = $pdo->prepare("INSERT INTO question_options (question_id, option_text, is_correct, option_order) VALUES (?, ?, ?, ?)");
+                $opt_stmt->execute([$question_id, 'True', ($tf_correct == 'true') ? 1 : 0, 1]);
+                $opt_stmt->execute([$question_id, 'False', ($tf_correct == 'false') ? 1 : 0, 2]);
             }
             
             $pdo->commit();

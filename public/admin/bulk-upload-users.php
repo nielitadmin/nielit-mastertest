@@ -50,7 +50,7 @@ try {
                 $successCount = 0;
                 
                 $checkUserStmt = $pdo->prepare("SELECT id FROM users WHERE username = ? OR email = ?");
-                $insertUserStmt = $pdo->prepare("INSERT INTO users (username, password_hash, email, full_name, role, is_active, created_at) VALUES (?, ?, ?, ?, ?, true, NOW()) RETURNING id");
+                $insertUserStmt = $pdo->prepare("INSERT INTO users (username, password_hash, email, full_name, role, is_active, created_at) VALUES (?, ?, ?, ?, ?, true, NOW())");
                 $insertCandidateStmt = $pdo->prepare("INSERT INTO candidates (user_id, registration_number, date_of_birth, mobile) VALUES (?, ?, ?, ?)");
 
                 while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
@@ -90,7 +90,7 @@ try {
                     // Insert User
                     $passwordHash = password_hash($password, PASSWORD_DEFAULT);
                     $insertUserStmt->execute([$username, $passwordHash, $email, $fullName, $role]);
-                    $newUserId = $insertUserStmt->fetchColumn();
+                    $newUserId = (int)$pdo->lastInsertId();
 
                     // If Candidate, handle extra table insertion
                     if ($role === 'candidate') {

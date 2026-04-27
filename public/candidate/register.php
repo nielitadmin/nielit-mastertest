@@ -45,10 +45,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $password_hash = password_hash($password, PASSWORD_DEFAULT);
                 $stmt = $pdo->prepare("
                     INSERT INTO users (username, password_hash, email, full_name, role, is_active) 
-                    VALUES (?, ?, ?, ?, 'candidate', true) RETURNING id
+                    VALUES (?, ?, ?, ?, 'candidate', true)
                 ");
                 $stmt->execute([$username, $password_hash, $email, $full_name]);
-                $user_id = $stmt->fetchColumn();
+                $user_id = (int)$pdo->lastInsertId();
                 
                 $reg_number = 'NIELIT' . date('Y') . str_pad($user_id, 5, '0', STR_PAD_LEFT);
                 

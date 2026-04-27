@@ -123,10 +123,10 @@ try {
                 // Insert registration securely using the user_id as the candidate_id
                 $insertStmt = $pdo->prepare("
                     INSERT INTO exam_registrations (candidate_id, session_id, registration_status, attendance_marked)
-                    VALUES (?, ?, ?, false) RETURNING id
+                    VALUES (?, ?, ?, false)
                 ");
                 $insertStmt->execute([$_SESSION['user_id'], $exam_id, $initial_status]);
-                $registration_id = $insertStmt->fetchColumn();
+                $registration_id = (int)$pdo->lastInsertId();
                 
                 $pdo->commit();
                 

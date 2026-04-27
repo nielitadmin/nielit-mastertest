@@ -57,8 +57,8 @@ try {
                 $rowNum = 1; // Start at 1 (excluding header)
                 $successCount = 0;
                 
-                $qStmt = $pdo->prepare("INSERT INTO questions (category_id, question_text, question_type, difficulty_level, marks, explanation, created_by, created_at, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), true) RETURNING id");
-                $oStmt = $pdo->prepare("INSERT INTO question_options (question_id, option_text, is_correct, option_order) VALUES (?, ?, ?::boolean, ?)");
+                $qStmt = $pdo->prepare("INSERT INTO questions (category_id, question_text, question_type, difficulty_level, marks, explanation, created_by, created_at, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), true)");
+                $oStmt = $pdo->prepare("INSERT INTO question_options (question_id, option_text, is_correct, option_order) VALUES (?, ?, ?, ?)");
 
                 while (($data = fgetcsv($handle, 2000, ",")) !== FALSE) {
                     $rowNum++;
@@ -94,7 +94,7 @@ try {
 
                     // Insert Question
                     $qStmt->execute([$categoryMap[$moduleCode], $qText, $qType, $difficulty, $marks, $explanation, $_SESSION['user_id']]);
-                    $qId = $qStmt->fetchColumn();
+                    $qId = (int)$pdo->lastInsertId();
 
                     // Handle Options
                     if ($qType === 'mcq') {
@@ -108,14 +108,14 @@ try {
                         $order = 1;
                         foreach ([$opt1, $opt2, $opt3, $opt4] as $idx => $optText) {
                             if (!empty($optText)) {
-                                $isCorrect = in_array((string)($idx + 1), $correctAnswers) ? 'true' : 'false';
+                                $isCorrect = in_array((string)($idx + 1), $correctAnswers) ? 1 : 0;
                                 $oStmt->execute([$qId, $optText, $isCorrect, $order]);
                                 $order++;
                             }
                         }
                     } elseif ($qType === 'true_false') {
-                        $isTrueCorrect = (strtolower($correctStr) === 'true' || $correctStr === '1' || strtolower($correctStr) === 't') ? 'true' : 'false';
-                        $isFalseCorrect = ($isTrueCorrect === 'true') ? 'false' : 'true';
+                        $isTrueCorrect = (strtolower($correctStr) === 'true' || $correctStr === '1' || strtolower($correctStr) === 't') ? 1 : 0;
+                        $isFalseCorrect = $isTrueCorrect ? 0 : 1;
                         
                         $oStmt->execute([$qId, 'True', $isTrueCorrect, 1]);
                         $oStmt->execute([$qId, 'False', $isFalseCorrect, 2]);

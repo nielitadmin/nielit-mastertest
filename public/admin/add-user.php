@@ -19,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $full_name = trim($_POST['full_name']);
         $password = $_POST['password'];
         $role = $_POST['role'];
-        $is_active = isset($_POST['is_active']) ? 'true' : 'false';
+        $is_active = isset($_POST['is_active']) ? 1 : 0;
 
         if (empty($username) || empty($email) || empty($full_name) || empty($password) || empty($role)) {
             $error = "All core fields (Name, Username, Email, Password, Role) are mandatory.";
@@ -35,10 +35,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $password_hash = password_hash($password, PASSWORD_DEFAULT);
                 $stmt = $pdo->prepare("
                     INSERT INTO users (username, password_hash, email, full_name, role, is_active, created_at) 
-                    VALUES (?, ?, ?, ?, ?, ?, NOW()) RETURNING id
+                    VALUES (?, ?, ?, ?, ?, ?, NOW())
                 ");
                 $stmt->execute([$username, $password_hash, $email, $full_name, $role, $is_active]);
-                $new_user_id = $stmt->fetchColumn();
+                $new_user_id = (int)$pdo->lastInsertId();
                 
                 if ($role === 'candidate') {
                     $mobile = trim($_POST['mobile'] ?? '');

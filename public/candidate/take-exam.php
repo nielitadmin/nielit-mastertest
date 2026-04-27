@@ -42,23 +42,49 @@ try {
     $candidate->execute([$_SESSION['user_id']]);
     $candidate_info = $candidate->fetch(PDO::FETCH_ASSOC);
     
-    // 3. Fetch up to 100 questions
-    $questions = $pdo->prepare("
-        SELECT q.*, 
-               (SELECT json_agg(
-                   json_build_object(
-                       'id', id, 
-                       'text', option_text, 
-                       'order', option_order
-                   ) ORDER BY option_order
-               ) FROM question_options WHERE question_id = q.id) as options
+    // 3. Fetch up to 100 questions (database-agnostic: no PostgreSQL JSON funcs)
+    $questionsStmt = $pdo->prepare(" 
+        SELECT q.*
         FROM questions q
         WHERE q.category_id = ? AND q.is_active = true
         ORDER BY q.id ASC
         LIMIT 100 
     ");
-    $questions->execute([$registration['category_id']]);
-    $questions = $questions->fetchAll(PDO::FETCH_ASSOC);
+    $questionsStmt->execute([$registration['category_id']]);
+    $questions = $questionsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (!empty($questions)) {
+        $questionIds = array_column($questions, 'id');
+        $placeholders = implode(',', array_fill(0, count($questionIds), '?'));
+
+        $optionsStmt = $pdo->prepare(" 
+            SELECT id, question_id, option_text, option_order
+            FROM question_options
+            WHERE question_id IN ($placeholders)
+            ORDER BY question_id ASC, option_order ASC
+        ");
+        $optionsStmt->execute($questionIds);
+        $optionRows = $optionsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $optionsByQuestion = [];
+        foreach ($optionRows as $opt) {
+            $qid = (int)$opt['question_id'];
+            if (!isset($optionsByQuestion[$qid])) {
+                $optionsByQuestion[$qid] = [];
+            }
+            $optionsByQuestion[$qid][] = [
+                'id' => (int)$opt['id'],
+                'text' => $opt['option_text'],
+                'order' => (int)$opt['option_order']
+            ];
+        }
+
+        foreach ($questions as &$q) {
+            $qid = (int)$q['id'];
+            $q['options'] = isset($optionsByQuestion[$qid]) ? json_encode($optionsByQuestion[$qid]) : '[]';
+        }
+        unset($q);
+    }
     
     if (empty($questions)) { die("No questions available for this exam."); }
     

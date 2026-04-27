@@ -88,10 +88,10 @@ try {
             $pdo->beginTransaction();
             $bookStmt = $pdo->prepare("
                 INSERT INTO slot_bookings (tp_id, category_id, requested_date, requested_time, estimated_candidates, total_fee, status, selected_candidates)
-                VALUES (?, ?, ?, ?, ?, ?, 'Pending Payment', ?) RETURNING id
+                VALUES (?, ?, ?, ?, ?, ?, 'Pending Payment', ?)
             ");
             $bookStmt->execute([$tp_id, $category_id, $req_date, $req_time, $num_candidates, $total_fee, $candidates_json]);
-            $booking_id = $bookStmt->fetchColumn();
+            $booking_id = (int)$pdo->lastInsertId();
             $pdo->commit();
             
             // Redirect to our Razorpay Dummy Gateway

@@ -35,14 +35,21 @@ try {
         exit();
     }
     
-    // Save or update answer
-    $stmt = $pdo->prepare("
-        INSERT INTO candidate_responses (registration_id, question_id, selected_option_id, saved_at)
-        VALUES (?, ?, ?, NOW())
-        ON CONFLICT (registration_id, question_id) 
-        DO UPDATE SET selected_option_id = EXCLUDED.selected_option_id, saved_at = NOW()
+    // Save or update answer (portable across MySQL/PostgreSQL)
+    $updateStmt = $pdo->prepare(" 
+        UPDATE candidate_responses
+        SET selected_option_id = ?, saved_at = NOW()
+        WHERE registration_id = ? AND question_id = ?
     ");
-    $stmt->execute([$data['registration_id'], $data['question_id'], $data['option_id']]);
+    $updateStmt->execute([$data['option_id'], $data['registration_id'], $data['question_id']]);
+
+    if ($updateStmt->rowCount() === 0) {
+        $insertStmt = $pdo->prepare(" 
+            INSERT INTO candidate_responses (registration_id, question_id, selected_option_id, saved_at)
+            VALUES (?, ?, ?, NOW())
+        ");
+        $insertStmt->execute([$data['registration_id'], $data['question_id'], $data['option_id']]);
+    }
     
     echo json_encode(['success' => true]);
     

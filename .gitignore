@@ -4,7 +4,6 @@
 
 # --- Sensitive Config Files ---
 config/mailer.php
-config/database.php
 app/config/database-config.php
 app/config/email-config.php
 app/config/google-config.php

@@ -206,13 +206,20 @@ if (isset($_GET['token'])) {
 // ============================================================================
 // Google OAuth credentials — set these in app/config/google-config.php
 // Copy app/config/google-config.example.php to google-config.php and fill in your values.
-$googleConfig = require __DIR__ . '/../../app/config/google-config.php';
-$google_client_id     = $googleConfig['client_id'];
-$google_client_secret = $googleConfig['client_secret'];
-$google_redirect_url  = $googleConfig['redirect_url'];
+$_googleConfigFile = __DIR__ . '/../../app/config/google-config.php';
+$googleConfig         = file_exists($_googleConfigFile) ? require $_googleConfigFile : [];
+$google_client_id     = $googleConfig['client_id']     ?? '';
+$google_client_secret = $googleConfig['client_secret'] ?? '';
+$google_redirect_url  = $googleConfig['redirect_url']  ?? '';
+$google_oauth_url     = '';
 
-// Generate the Google Login URL (Now forces account selection!)
-$google_oauth_url = 'https://accounts.google.com/o/oauth2/v2/auth?scope=' . urlencode('https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email') . '&redirect_uri=' . urlencode($google_redirect_url) . '&response_type=code&client_id=' . $google_client_id . '&access_type=online&prompt=select_account';
+if ($google_client_id !== '') {
+    $google_oauth_url = 'https://accounts.google.com/o/oauth2/v2/auth?scope='
+        . urlencode('https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email')
+        . '&redirect_uri=' . urlencode($google_redirect_url)
+        . '&response_type=code&client_id=' . $google_client_id
+        . '&access_type=online&prompt=select_account';
+}
 
 // ============================================================================
 // 1. HANDLE GOOGLE LOGIN & AUTO-REGISTRATION
@@ -891,12 +898,14 @@ $_SESSION['captcha_result'] = $num1 + $num2;
             </div>
             <?php endif; ?>
 
+            <?php if ($google_oauth_url !== ''): ?>
             <a href="<?php echo $google_oauth_url; ?>" class="btn-google">
                 <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google">
                 Sign in with Google
             </a>
 
             <div class="divider">Or manual login</div>
+            <?php endif; ?>
 
             <form method="POST" autocomplete="off">
                 <div class="form-group">

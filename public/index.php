@@ -402,7 +402,7 @@ session_destroy();
                 <div class="dropdown">
                     <button class="dropbtn">Administration <i class="fas fa-caret-down"></i></button>
                     <div class="dropdown-content">
-                        <a href="admin-login.php">
+                        <a href="public/admin/admin-login.php">
                             <i class="fas fa-shield-alt"></i> 
                             <div class="ac-text">
                                 Master Superadmin Console

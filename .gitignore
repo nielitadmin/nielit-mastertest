@@ -1,2 +1,47 @@
+# ============================================================
+# NIELIT CBT System — .gitignore
+# ============================================================
+
+# --- Sensitive Config Files ---
 config/mailer.php
-public/candidate/candidate-login.php
+config/database.php
+app/config/database-config.php
+app/config/email-config.php
+
+# --- Logs ---
+app/logs/*.txt
+app/logs/*.log
+*.log
+
+# --- Database Backups ---
+database/backups/
+
+# --- Uploaded Files ---
+public/uploads/
+uploads/
+
+# --- PHP Environment / Cache ---
+.env
+.env.*
+*.cache
+
+# --- OS & Editor Files ---
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Composer / Node ---
+vendor/
+node_modules/
+composer.lock
+package-lock.json
+
+# --- Temp / Build ---
+tmp/
+temp/
+*.tmp
+*.bak

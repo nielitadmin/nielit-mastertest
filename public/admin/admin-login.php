@@ -492,7 +492,7 @@ $_SESSION['captcha_result'] = $num1 + $num2;
     </div>
 
     <nav class="top-nav">
-        <a href="/nielit-bbsr-mock/public/index.php" class="btn-back-top">
+        <a href="/index.php" class="btn-back-top">
             <i class="fas fa-arrow-left"></i> Return to Portals
         </a>
     </nav>

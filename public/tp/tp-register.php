@@ -72,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                             <p style='font-size: 14px; color: #64748B;'><em>Please keep your credentials secure. If you ever forget your password, you can reset it from the login page.</em></p>
                             
                             <div style='margin-top: 30px; text-align: center;'>
-                                <a href='http://localhost:8080/nielit-bbsr-mock/public/tp/tp-login.php' style='background: #0D9488; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;'>Access TP Portal</a>
+                                <a href='https://test.nielitbhubaneswar.in/tp/tp-login.php' style='background: #0D9488; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;'>Access TP Portal</a>
                             </div>
                         </div>
                         <div style='background: #F1F5F9; padding: 15px; text-align: center; font-size: 12px; color: #64748B;'>

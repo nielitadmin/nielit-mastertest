@@ -1,7 +1,7 @@
 <?php
 echo "<h1>🔍 Path Testing Tool</h1>";
 
-$base_url = 'http://localhost/nielit-bbsr-mock/public';
+$base_url = 'https://test.nielitbhubaneswar.in';
 $pages = [
     'Home' => 'index.php',
     'Admin Login' => 'admin-login.php',

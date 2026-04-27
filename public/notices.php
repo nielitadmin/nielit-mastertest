@@ -260,21 +260,21 @@ session_start();
                 <div class="dropdown">
                     <button class="dropbtn">Administration <i class="fas fa-caret-down"></i></button>
                     <div class="dropdown-content">
-                        <a href="/nielit-bbsr-mock/public/admin/admin-login.php">
+                        <a href="/admin/admin-login.php">
                             <i class="fas fa-shield-alt"></i> 
                             <div class="ac-text">
                                 Master Superadmin Console
                                 <span class="ac-desc">Manage system-wide provisioning, audit logs, and user roles.</span>
                             </div>
                         </a>
-                        <a href="/nielit-bbsr-mock/public/finance/finance-login.php">
+                        <a href="/finance/finance-login.php">
                             <i class="fas fa-file-invoice-dollar"></i>
                             <div class="ac-text">
                                 Finance Dept Dashboard
                                 <span class="ac-desc">Institute payment verification and fee reconciliation.</span>
                             </div>
                         </a>
-                        <a href="/nielit-bbsr-mock/public/coordinator/coordinator-login.php">
+                        <a href="/coordinator/coordinator-login.php">
                             <i class="fas fa-calendar-check"></i>
                             <div class="ac-text">
                                 Assessment Coordinator Portal

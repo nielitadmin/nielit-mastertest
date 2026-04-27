@@ -402,21 +402,21 @@ session_destroy();
                 <div class="dropdown">
                     <button class="dropbtn">Administration <i class="fas fa-caret-down"></i></button>
                     <div class="dropdown-content">
-                        <a href="/nielit-bbsr-mock/public/admin/admin-login.php">
+                        <a href="/admin/admin-login.php">
                             <i class="fas fa-shield-alt"></i> 
                             <div class="ac-text">
                                 Master Superadmin Console
                                 <span class="ac-desc">Manage system-wide provisioning, audit logs, and user roles.</span>
                             </div>
                         </a>
-                        <a href="/nielit-bbsr-mock/public/finance/finance-login.php">
+                        <a href="/finance/finance-login.php">
                             <i class="fas fa-file-invoice-dollar"></i>
                             <div class="ac-text">
                                 Finance Dept Dashboard
                                 <span class="ac-desc">Institute payment verification and fee reconciliation.</span>
                             </div>
                         </a>
-                        <a href="/nielit-bbsr-mock/public/coordinator/coordinator-login.php">
+                        <a href="/coordinator/coordinator-login.php">
                             <i class="fas fa-calendar-check"></i>
                             <div class="ac-text">
                                 Assessment Coordinator Portal
@@ -467,7 +467,7 @@ session_destroy();
         </div>
 
         <div class="login-section">
-            <a href="/nielit-bbsr-mock/public/candidate/candidate-login.php" class="action-card candidate">
+            <a href="/candidate/candidate-login.php" class="action-card candidate">
                 <div class="ac-icon"><i class="fas fa-user-graduate"></i></div>
                 <div class="ac-text">
                     <h2>Candidate Portal</h2>
@@ -476,7 +476,7 @@ session_destroy();
                 <i class="fas fa-chevron-right" style="color: var(--border); font-size: 20px;"></i>
             </a>
             
-            <a href="/nielit-bbsr-mock/public/tp/tp-login.php" class="action-card tp">
+            <a href="/tp/tp-login.php" class="action-card tp">
                 <div class="ac-icon"><i class="fas fa-chalkboard-teacher"></i></div>
                 <div class="ac-text">
                     <h2>Training Partner Portal</h2>

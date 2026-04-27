@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['reset_request'])) {
                 // =======================================================
                 require_once __DIR__ . '/../../config/mailer.php'; 
                 
-                $reset_link = "http://localhost:8080/nielit-bbsr-mock/public/tp/tp-reset-password.php?token=" . $reset_token;
+                $reset_link = "https://test.nielitbhubaneswar.in/tp/tp-reset-password.php?token=" . $reset_token;
                 
                 $subject = "Password Reset Request - NIELIT TP Portal";
                 $htmlBody = "

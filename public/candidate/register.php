@@ -65,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 // =========================================================================
                 require_once __DIR__ . '/../../config/mailer.php';
                 
-                $login_url = "http://localhost:8080/nielit-bbsr-mock/public/candidate/candidate-login.php";
+                $login_url = "https://test.nielitbhubaneswar.in/candidate/candidate-login.php";
                 
                 $html_body = "
                     <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #E2E8F0; border-radius: 16px; background: #FFFFFF;'>

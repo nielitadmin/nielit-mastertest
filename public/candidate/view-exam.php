@@ -1,11 +1,11 @@
 <?php
 date_default_timezone_set('Asia/Kolkata');
-session_name('NIELIT_ADMIN_SESSION');
+session_name('NIELIT_COORD_SESSION');
 session_start();
 
-// Check if user is logged in and is admin
-if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 'admin') {
-    header("Location: admin-login.php");
+// Check if user is logged in and is a coordinator
+if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 'coordinator') {
+    header("Location: coordinator-login.php");
     exit();
 }
 
@@ -18,7 +18,7 @@ $exam_id = $_GET['id'];
 
 // ============================================================================
 // NEW ARCHITECTURE: Import centralized database connection
-// Path assumes this file is in: /public/admin/view-exam.php
+// Path assumes this file is in: /public/coordinator/view-exam.php
 // ============================================================================
 require_once __DIR__ . '/../../config/database.php';
 
@@ -111,7 +111,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>View Exam Roster - NIELIT Admin Console</title>
+    <title>View Exam Roster - NIELIT Coordinator Portal</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -229,7 +229,7 @@ try {
                 <a href="manage-exams.php" class="btn-back"><i class="fas fa-arrow-left"></i> Exams</a>
                 <div class="brand-text">
                     <h2>Session Viewer</h2>
-                    <span class="hide-mobile">NIELIT Admin Console</span>
+                    <span class="hide-mobile">NIELIT Coordinator Portal</span>
                 </div>
             </div>
             <div class="nav-right">

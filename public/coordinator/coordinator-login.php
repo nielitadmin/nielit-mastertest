@@ -2,19 +2,92 @@
 session_name('NIELIT_COORD_SESSION');
 session_start();
 
-// If already logged in, redirect to Coordinator dashboard
+// If already fully logged in, redirect to Coordinator dashboard
 if (isset($_SESSION['user_id']) && $_SESSION['user_role'] == 'coordinator') {
     header("Location: coordinator-dashboard.php");
     exit();
 }
 
 $error = '';
+$success_msg = '';
 
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../config/mailer.php'; // 🟢 Added Mailer for OTP
+
+// ==========================================
+// CANCEL OTP LOGIN PROCESS
+// ==========================================
+if (isset($_GET['cancel_otp'])) {
+    session_unset();
+    session_destroy();
+    header("Location: coordinator-login.php");
+    exit();
+}
+
+// ==========================================
+// STEP 2: VERIFY OTP
+// ==========================================
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['verify_otp'])) {
+    $entered_otp = trim($_POST['otp']);
     
-    // Connect to database
-    require_once __DIR__ . '/../../config/database.php';
-    
+    if (isset($_SESSION['login_otp']) && $entered_otp == $_SESSION['login_otp']) {
+        // OTP is Correct! Complete the login.
+        $user_id = $_SESSION['temp_user']['id'];
+        
+        $_SESSION['user_id'] = $user_id;
+        $_SESSION['username'] = $_SESSION['temp_user']['username'];
+        $_SESSION['user_role'] = $_SESSION['temp_user']['role'];
+        $_SESSION['full_name'] = $_SESSION['temp_user']['full_name'];
+        $_SESSION['login_time'] = time();
+        
+        // Update last login timestamp
+        $update = $pdo->prepare("UPDATE users SET last_login = NOW() WHERE id = ?");
+        $update->execute([$user_id]);
+        
+        // Clear temporary OTP data
+        unset($_SESSION['temp_user']);
+        unset($_SESSION['login_otp']);
+        unset($_SESSION['awaiting_otp']);
+        
+        header("Location: coordinator-dashboard.php");
+        exit();
+    } else {
+        $error = "Invalid OTP. Please try again.";
+    }
+}
+
+// ==========================================
+// RESEND OTP
+// ==========================================
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['resend_otp'])) {
+    if (isset($_SESSION['temp_user'])) {
+        $otp = rand(100000, 999999);
+        $_SESSION['login_otp'] = $otp;
+        
+        $email = $_SESSION['temp_user']['email'];
+        $name = $_SESSION['temp_user']['full_name'];
+        
+        $subject = "Resent: Secure Login OTP - NIELIT Coordinator Portal";
+        $html_body = "
+            <div style='font-family: Arial, sans-serif; max-width: 500px; margin: auto; padding: 20px; border: 1px solid #E2E8F0; border-radius: 12px;'>
+                <h2 style='color: #7C3AED; text-align: center;'>Secure Login OTP</h2>
+                <p>Dear {$name},</p>
+                <p>You requested a new One-Time Password (OTP). Your new secure code is:</p>
+                <div style='text-align: center; margin: 20px 0;'>
+                    <span style='font-size: 28px; font-weight: bold; background: #F5F3FF; color: #7C3AED; padding: 10px 20px; border-radius: 8px; border: 1px dashed #A78BFA; letter-spacing: 5px;'>{$otp}</span>
+                </div>
+                <p style='color: #64748B; font-size: 13px;'>Do not share this code with anyone.</p>
+            </div>
+        ";
+        sendNielitEmail($email, $name, $subject, $html_body);
+        $success_msg = "A new OTP has been sent to your email address.";
+    }
+}
+
+// ==========================================
+// STEP 1: INITIAL LOGIN (USERNAME/PASSWORD)
+// ==========================================
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['login_step'])) {
     $username = trim($_POST['username']);
     $password = $_POST['password'];
 
@@ -22,27 +95,36 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $error = "Please enter both username and password.";
     } else {
         try {
-            // ONLY select users with the 'coordinator' role
             $stmt = $pdo->prepare("SELECT * FROM users WHERE username = ? AND role = 'coordinator' AND is_active = true");
             $stmt->execute([$username]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if ($user && password_verify($password, $user['password_hash'])) {
                 
-                // Set Coordinator Session Variables
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['username'] = $user['username'];
-                $_SESSION['user_role'] = $user['role'];
-                $_SESSION['full_name'] = $user['full_name'];
-                $_SESSION['login_time'] = time();
+                // Credentials are correct. Generate OTP and pause login.
+                $otp = rand(100000, 999999);
+                $_SESSION['login_otp'] = $otp;
+                $_SESSION['temp_user'] = $user;
+                $_SESSION['awaiting_otp'] = true;
                 
-                // Update last login timestamp
-                $update = $pdo->prepare("UPDATE users SET last_login = NOW() WHERE id = ?");
-                $update->execute([$user['id']]);
-                
-                header("Location: coordinator-dashboard.php");
-                exit();
+                // Send Email via PHPMailer
+                $subject = "Secure Login OTP - NIELIT Coordinator Portal";
+                $html_body = "
+                    <div style='font-family: Arial, sans-serif; max-width: 500px; margin: auto; padding: 20px; border: 1px solid #E2E8F0; border-radius: 12px;'>
+                        <h2 style='color: #7C3AED; text-align: center;'>Secure Login OTP</h2>
+                        <p>Dear {$user['full_name']},</p>
+                        <p>An attempt was made to log into your Coordinator account. Your One-Time Password (OTP) is:</p>
+                        <div style='text-align: center; margin: 20px 0;'>
+                            <span style='font-size: 28px; font-weight: bold; background: #F5F3FF; color: #7C3AED; padding: 10px 20px; border-radius: 8px; border: 1px dashed #A78BFA; letter-spacing: 5px;'>{$otp}</span>
+                        </div>
+                        <p style='color: #64748B; font-size: 13px;'>If you did not request this, please contact the administrator immediately and change your password.</p>
+                    </div>
+                ";
+                sendNielitEmail($user['email'], $user['full_name'], $subject, $html_body);
 
+                // Stop execution to allow the UI to render the OTP form
+                $success_msg = "Please check your email for the verification code.";
+                
             } else {
                 $error = "Invalid credentials or unauthorized access.";
             }
@@ -64,12 +146,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <style>
         body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #F8FAFC; margin: 0; display: flex; align-items: center; justify-content: center; height: 100vh; overflow: hidden; position: relative; }
         
-        /* Modern Purple Abstract Background for Coordinator */
         .bg-shapes { position: absolute; inset: 0; z-index: -1; overflow: hidden; background: linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%); }
         .circle1 { position: absolute; width: 600px; height: 600px; background: rgba(124, 58, 237, 0.08); border-radius: 50%; top: -20%; left: -10%; filter: blur(60px); }
         .circle2 { position: absolute; width: 500px; height: 500px; background: rgba(139, 92, 246, 0.08); border-radius: 50%; bottom: -20%; right: -10%; filter: blur(50px); }
         
-        .login-card { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(20px); border: 1px solid white; border-radius: 24px; padding: 50px 40px; width: 100%; max-width: 420px; box-shadow: 0 25px 50px -12px rgba(124, 58, 237, 0.15); animation: fadeUp 0.6s ease-out; }
+        .login-card { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(20px); border: 1px solid white; border-radius: 24px; padding: 50px 40px; width: 100%; max-width: 420px; box-shadow: 0 25px 50px -12px rgba(124, 58, 237, 0.15); animation: fadeUp 0.6s ease-out; z-index: 10; }
         @keyframes fadeUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
 
         .logo-wrap { text-align: center; margin-bottom: 30px; }
@@ -77,11 +158,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         h1 { font-size: 24px; font-weight: 800; color: #0F172A; margin: 0 0 5px 0; }
         p { color: #64748B; font-size: 14px; margin: 0; font-weight: 500; }
 
-        .error-msg { background: #FEE2E2; color: #DC2626; padding: 12px 15px; border-radius: 12px; font-size: 13px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; border: 1px solid #FCA5A5; }
+        .alert-box { padding: 12px 15px; border-radius: 12px; font-size: 13px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+        .error-msg { background: #FEE2E2; color: #DC2626; border: 1px solid #FCA5A5; }
+        .success-msg { background: #D1FAE5; color: #059669; border: 1px solid #6EE7B7; }
 
         .form-group { margin-bottom: 20px; }
-        
-        /* 🆕 Flexbox Layout for Label and Forgot Password */
         .label-flex { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
         .label-flex label { margin-bottom: 0; display: block; font-size: 12px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; }
         .forgot-link { font-size: 12px; color: #7C3AED; text-decoration: none; font-weight: 700; transition: color 0.3s; }
@@ -92,11 +173,34 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         .form-control { width: 100%; padding: 14px 16px 14px 45px; border: 1px solid #E2E8F0; border-radius: 12px; font-family: inherit; font-size: 14px; background: #F8FAFC; outline: none; transition: 0.3s; box-sizing: border-box; }
         .form-control:focus { border-color: #7C3AED; background: white; box-shadow: 0 0 0 4px #EDE9FE; }
 
+        /* OTP Specific Styles */
+        .otp-input { padding-left: 16px !important; text-align: center; font-size: 24px; letter-spacing: 8px; font-weight: 800; color: #0F172A; }
+        .otp-input::placeholder { font-size: 14px; letter-spacing: normal; font-weight: 500; color: #94A3B8;}
+
         .btn-submit { width: 100%; padding: 15px; background: #7C3AED; color: white; border: none; border-radius: 12px; font-weight: 700; font-size: 15px; font-family: inherit; cursor: pointer; transition: 0.3s; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 15px rgba(124, 58, 237, 0.25); }
         .btn-submit:hover { background: #6D28D9; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(124, 58, 237, 0.35); }
 
-        .back-link { position: absolute; top: 30px; left: 40px; display: inline-flex; align-items: center; gap: 8px; background: white; border: 1px solid #E2E8F0; padding: 10px 20px; border-radius: 12px; color: #0F172A; text-decoration: none; font-weight: 700; font-size: 13px; transition: 0.3s; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
+        .btn-resend { width: 100%; padding: 12px; background: transparent; color: #7C3AED; border: 1px solid #7C3AED; border-radius: 12px; font-weight: 700; font-size: 14px; cursor: pointer; transition: 0.3s; margin-top: 10px; }
+        .btn-resend:hover { background: #F5F3FF; }
+
+        .cancel-login { display: block; text-align: center; margin-top: 15px; color: #DC2626; text-decoration: none; font-size: 13px; font-weight: 600; }
+        .cancel-login:hover { text-decoration: underline; }
+
+        .back-link { position: absolute; top: 30px; left: 40px; display: inline-flex; align-items: center; gap: 8px; background: white; border: 1px solid #E2E8F0; padding: 10px 20px; border-radius: 12px; color: #0F172A; text-decoration: none; font-weight: 700; font-size: 13px; transition: 0.3s; box-shadow: 0 2px 5px rgba(0,0,0,0.02); z-index: 20; }
         .back-link:hover { transform: translateX(-3px); border-color: #7C3AED; color: #7C3AED; }
+
+        .register-banner { margin-top: 25px; padding: 15px; background: rgba(237, 233, 254, 0.6); border: 1px dashed #A78BFA; border-radius: 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .register-text { font-size: 12px; color: #6D28D9; font-weight: 500; line-height: 1.4; text-align: left; }
+        .register-text strong { display: block; font-size: 13px; font-weight: 800; color: #4C1D95; margin-bottom: 2px;}
+        .btn-register { flex-shrink: 0; padding: 10px 16px; background: white; border: 1px solid #A78BFA; border-radius: 8px; color: #7C3AED; text-decoration: none; font-size: 12px; font-weight: 700; transition: all 0.3s; box-shadow: 0 2px 4px rgba(124, 58, 237, 0.1); }
+        .btn-register:hover { background: #7C3AED; color: white; border-color: #7C3AED; box-shadow: 0 4px 10px rgba(124, 58, 237, 0.2); }
+
+        @media (max-width: 480px) {
+            .back-link { top: 15px; left: 15px; padding: 8px 12px; font-size: 12px; }
+            .login-card { padding: 30px 20px; }
+            .register-banner { flex-direction: column; text-align: center; }
+            .btn-register { width: 100%; box-sizing: border-box; text-align: center; }
+        }
     </style>
 </head>
 <body>
@@ -109,40 +213,95 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <a href="../index.php" class="back-link"><i class="fas fa-arrow-left"></i> Return Home</a>
 
     <div class="login-card">
-        <div class="logo-wrap">
-            <div class="icon-box"><i class="fas fa-calendar-check"></i></div>
-            <h1>Coordinator Portal</h1>
-            <p>Exam Logistics & Scheduling</p>
-        </div>
+        
+        <?php if (isset($_SESSION['awaiting_otp'])): ?>
+            <div class="logo-wrap" style="margin-bottom: 20px;">
+                <div class="icon-box" style="background: #10B981; box-shadow: 0 10px 25px rgba(16, 185, 129, 0.3);"><i class="fas fa-shield-alt"></i></div>
+                <h1>2-Step Verification</h1>
+                <p>We sent a 6-digit code to your email.</p>
+                <div style="font-size: 12px; color: #7C3AED; font-weight: 700; margin-top: 5px;">
+                    <?php 
+                        // Mask the email for security (e.g., a***n@nielit.gov.in)
+                        $email_parts = explode("@", $_SESSION['temp_user']['email']);
+                        echo substr($email_parts[0], 0, 1) . "***" . substr($email_parts[0], -1) . "@" . $email_parts[1]; 
+                    ?>
+                </div>
+            </div>
 
-        <?php if ($error): ?>
-            <div class="error-msg"><i class="fas fa-exclamation-circle"></i> <?php echo $error; ?></div>
+            <?php if ($error): ?>
+                <div class="alert-box error-msg"><i class="fas fa-exclamation-circle"></i> <?php echo $error; ?></div>
+            <?php endif; ?>
+            <?php if ($success_msg): ?>
+                <div class="alert-box success-msg"><i class="fas fa-check-circle"></i> <?php echo $success_msg; ?></div>
+            <?php endif; ?>
+
+            <form method="POST">
+                <input type="hidden" name="verify_otp" value="1">
+                <div class="form-group">
+                    <div class="label-flex">
+                        <label>Enter 6-Digit OTP</label>
+                    </div>
+                    <div class="input-wrap">
+                        <input type="text" name="otp" class="form-control otp-input" placeholder="••••••" maxlength="6" pattern="\d{6}" required autofocus autocomplete="one-time-code">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-submit">Verify & Login <i class="fas fa-check"></i></button>
+            </form>
+
+            <form method="POST" style="margin-top: 10px;">
+                <input type="hidden" name="resend_otp" value="1">
+                <button type="submit" class="btn-resend"><i class="fas fa-redo-alt"></i> Resend Code</button>
+            </form>
+
+            <a href="?cancel_otp=1" class="cancel-login"><i class="fas fa-times"></i> Cancel Login</a>
+
+        <?php else: ?>
+            <div class="logo-wrap">
+                <div class="icon-box"><i class="fas fa-calendar-check"></i></div>
+                <h1>Coordinator Portal</h1>
+                <p>Exam Logistics & Scheduling</p>
+            </div>
+
+            <?php if ($error): ?>
+                <div class="alert-box error-msg"><i class="fas fa-exclamation-circle"></i> <?php echo $error; ?></div>
+            <?php endif; ?>
+
+            <form method="POST">
+                <input type="hidden" name="login_step" value="1">
+                <div class="form-group">
+                    <div class="label-flex">
+                        <label>Coordinator ID / Username</label>
+                    </div>
+                    <div class="input-wrap">
+                        <i class="fas fa-user-tag"></i>
+                        <input type="text" name="username" class="form-control" placeholder="Enter assigned ID" required>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <div class="label-flex">
+                        <label>Secure Password</label>
+                        <a href="coordinator-forgot-password.php" class="forgot-link">Forgot Password?</a>
+                    </div>
+                    <div class="input-wrap">
+                        <i class="fas fa-lock"></i>
+                        <input type="password" name="password" class="form-control" placeholder="Enter password" required>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-submit">Continue <i class="fas fa-arrow-right"></i></button>
+            </form>
+
+            <div class="register-banner">
+                <div class="register-text">
+                    <strong>New Coordinator?</strong>
+                    Apply for administrative portal access.
+                </div>
+                <a href="coordinator-register.php" class="btn-register">Register Here</a>
+            </div>
         <?php endif; ?>
 
-        <form method="POST">
-            <div class="form-group">
-                <div class="label-flex">
-                    <label>Coordinator ID / Username</label>
-                </div>
-                <div class="input-wrap">
-                    <i class="fas fa-user-tag"></i>
-                    <input type="text" name="username" class="form-control" placeholder="Enter assigned ID" required>
-                </div>
-            </div>
-            
-            <div class="form-group">
-                <div class="label-flex">
-                    <label>Secure Password</label>
-                    <a href="coordinator-forgot-password.php" class="forgot-link">Forgot Password?</a>
-                </div>
-                <div class="input-wrap">
-                    <i class="fas fa-lock"></i>
-                    <input type="password" name="password" class="form-control" placeholder="Enter password" required>
-                </div>
-            </div>
-
-            <button type="submit" class="btn-submit">Secure Login <i class="fas fa-sign-in-alt"></i></button>
-        </form>
     </div>
 
 </body>

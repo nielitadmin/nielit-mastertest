@@ -1,16 +1,16 @@
 <?php
-session_name('NIELIT_ADMIN_SESSION');
+// Use the correct Coordinator session name
+session_name('NIELIT_COORD_SESSION'); 
 session_start();
 
-// Check if user is logged in and is admin
-if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 'admin') {
-    header("Location: admin-login.php");
+// Check if user is logged in and is a coordinator
+if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 'coordinator') {
+    header("Location: coordinator-login.php");
     exit();
 }
 
 // ============================================================================
 // NEW ARCHITECTURE: Import centralized database connection
-// Path assumes this file is in: /public/admin/add-question.php
 // ============================================================================
 require_once __DIR__ . '/../../config/database.php';
 
@@ -18,11 +18,10 @@ $error = '';
 $success = '';
 
 try {
-    // Fetch all categories from DB (uses $pdo from database.php)
+    // Fetch all categories from DB
     $categories = $pdo->query("SELECT id, category_code, category_name FROM exam_categories ORDER BY category_code ASC")->fetchAll(PDO::FETCH_ASSOC);
 
     // --- SMART CATEGORIZATION ENGINE ---
-    // This automatically groups your database modules into High-Level Course Categories
     $course_groups = [
         'O-Level Modules' => [],
         'A-Level Modules' => [],
@@ -48,11 +47,11 @@ try {
         }
     }
     
-    // Remove completely empty groups so the dropdown looks clean
+    // Remove completely empty groups
     $course_groups = array_filter($course_groups, function($val) { return count($val) > 0; });
 
     if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-        $category_id = $_POST['category_id']; // This is the specific module ID
+        $category_id = $_POST['category_id'];
         $question_text = trim($_POST['question_text']);
         $question_type = $_POST['question_type'];
         $difficulty_level = $_POST['difficulty_level'];
@@ -88,15 +87,17 @@ try {
         if (empty($errors)) {
             $pdo->beginTransaction();
             
-            // Insert question
+            // 🟢 FIX 1: MySQL uses lastInsertId() instead of RETURNING id
             $stmt = $pdo->prepare("
                 INSERT INTO questions (category_id, question_text, question_type, difficulty_level, marks, explanation, created_by, created_at, is_active)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), true)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), 1)
             ");
             $stmt->execute([$category_id, $question_text, $question_type, $difficulty_level, $marks, $explanation, $_SESSION['user_id']]);
-            $question_id = (int)$pdo->lastInsertId();
             
-            // Handle options
+            // Grab the newly created question ID
+            $question_id = $pdo->lastInsertId();
+            
+            // 🟢 FIX 2: Removed PostgreSQL ::boolean cast. MySQL uses 1 and 0.
             if ($question_type == 'mcq' && isset($_POST['options'])) {
                 $opt_stmt = $pdo->prepare("
                     INSERT INTO question_options (question_id, option_text, is_correct, option_order)
@@ -106,6 +107,7 @@ try {
                 $order = 1;
                 foreach ($_POST['options'] as $option) {
                     if (!empty(trim($option['text'] ?? ''))) {
+                        // Use 1 for true, 0 for false in MySQL
                         $is_correct = (isset($option['is_correct']) && $option['is_correct'] === 'on') ? 1 : 0;
                         $opt_stmt->execute([$question_id, trim($option['text']), $is_correct, $order]);
                         $order++;
@@ -114,6 +116,8 @@ try {
             } elseif ($question_type == 'true_false') {
                 $tf_correct = $_POST['tf_correct'] ?? 'true';
                 $opt_stmt = $pdo->prepare("INSERT INTO question_options (question_id, option_text, is_correct, option_order) VALUES (?, ?, ?, ?)");
+                
+                // Use 1 for true, 0 for false in MySQL
                 $opt_stmt->execute([$question_id, 'True', ($tf_correct == 'true') ? 1 : 0, 1]);
                 $opt_stmt->execute([$question_id, 'False', ($tf_correct == 'false') ? 1 : 0, 2]);
             }
@@ -133,7 +137,8 @@ try {
 } catch (PDOException $e) {
     if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
     $error = "System Database Error. Please try again later.";
-    error_log("Add Question DB error: " . $e->getMessage());
+    // Uncomment the line below to see the exact database error in your Hostinger logs if it ever fails again
+    // error_log("Add Question DB error: " . $e->getMessage());
 }
 ?>
 

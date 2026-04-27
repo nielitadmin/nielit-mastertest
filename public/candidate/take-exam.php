@@ -20,8 +20,6 @@ $exam_id = $_GET['exam_id'];
 require_once __DIR__ . '/../../config/database.php';
 
 try {
-    // $pdo is securely imported from database.php
-    
     // 1. Get registration details
     $stmt = $pdo->prepare("
         SELECT er.id as registration_id, es.exam_date, es.start_time, es.end_time, es.is_practice, 
@@ -42,49 +40,23 @@ try {
     $candidate->execute([$_SESSION['user_id']]);
     $candidate_info = $candidate->fetch(PDO::FETCH_ASSOC);
     
-    // 3. Fetch up to 100 questions (database-agnostic: no PostgreSQL JSON funcs)
-    $questionsStmt = $pdo->prepare(" 
-        SELECT q.*
+    // 3. Fetch up to 100 questions
+    $questions = $pdo->prepare("
+        SELECT q.*, 
+               (SELECT JSON_ARRAYAGG(
+                   JSON_OBJECT(
+                       'id', id, 
+                       'text', option_text, 
+                       'order', option_order
+                   )
+               ) FROM question_options WHERE question_id = q.id) as options
         FROM questions q
-        WHERE q.category_id = ? AND q.is_active = true
+        WHERE q.category_id = ? AND q.is_active = 1
         ORDER BY q.id ASC
         LIMIT 100 
     ");
-    $questionsStmt->execute([$registration['category_id']]);
-    $questions = $questionsStmt->fetchAll(PDO::FETCH_ASSOC);
-
-    if (!empty($questions)) {
-        $questionIds = array_column($questions, 'id');
-        $placeholders = implode(',', array_fill(0, count($questionIds), '?'));
-
-        $optionsStmt = $pdo->prepare(" 
-            SELECT id, question_id, option_text, option_order
-            FROM question_options
-            WHERE question_id IN ($placeholders)
-            ORDER BY question_id ASC, option_order ASC
-        ");
-        $optionsStmt->execute($questionIds);
-        $optionRows = $optionsStmt->fetchAll(PDO::FETCH_ASSOC);
-
-        $optionsByQuestion = [];
-        foreach ($optionRows as $opt) {
-            $qid = (int)$opt['question_id'];
-            if (!isset($optionsByQuestion[$qid])) {
-                $optionsByQuestion[$qid] = [];
-            }
-            $optionsByQuestion[$qid][] = [
-                'id' => (int)$opt['id'],
-                'text' => $opt['option_text'],
-                'order' => (int)$opt['option_order']
-            ];
-        }
-
-        foreach ($questions as &$q) {
-            $qid = (int)$q['id'];
-            $q['options'] = isset($optionsByQuestion[$qid]) ? json_encode($optionsByQuestion[$qid]) : '[]';
-        }
-        unset($q);
-    }
+    $questions->execute([$registration['category_id']]);
+    $questions = $questions->fetchAll(PDO::FETCH_ASSOC);
     
     if (empty($questions)) { die("No questions available for this exam."); }
     
@@ -96,14 +68,12 @@ try {
     
     // 5. SMART TIMER LOGIC
     if ($registration['is_practice']) {
-        // Practice exams give the full relative duration starting from when they open it
         $session_timer_key = 'exam_end_' . $registration['registration_id'];
         if (!isset($_SESSION[$session_timer_key])) {
             $_SESSION[$session_timer_key] = time() + ($registration['duration_minutes'] * 60);
         }
         $end_time = $_SESSION[$session_timer_key];
     } else {
-        // Formal exams calculate the EXACT absolute wall-clock end time from the DB
         $date_clean = explode(' ', $registration['exam_date'])[0];
         $start_clean = explode('+', $registration['start_time'])[0];
         $end_clean = explode('+', $registration['end_time'])[0];
@@ -111,7 +81,6 @@ try {
         $start_ts = strtotime($date_clean . ' ' . $start_clean);
         $end_ts = strtotime($date_clean . ' ' . $end_clean);
         
-        // Handle if the end time passes midnight into the next day
         if ($end_ts < $start_ts) { 
             $end_ts += 86400; 
         } 
@@ -119,7 +88,9 @@ try {
         $end_time = $end_ts;
     }
     
-} catch (PDOException $e) { die("Database Connection Error."); }
+} catch (PDOException $e) { 
+    die("Database Error: " . $e->getMessage()); 
+}
 
 $total_questions = count($questions);
 $candidate_name = !empty($candidate_info['full_name']) ? $candidate_info['full_name'] : 'Candidate';
@@ -165,9 +136,9 @@ $roll_number = !empty($candidate_info['registration_number']) ? $candidate_info[
         .btn-start-fs:hover { background: #15803D; transform: scale(1.05); }
 
         /* HEADER */
-        .header { background: var(--tcs-dark); color: white; display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; height: 60px; }
-        .header-title { font-size: 20px; font-weight: 700; letter-spacing: 1px; }
-        .header-system { font-size: 14px; font-weight: 600; color: #aaa; }
+        .header { background: var(--tcs-dark); color: white; display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; height: 50px; flex-shrink: 0; }
+        .header-title { font-size: 18px; font-weight: 700; letter-spacing: 1px; }
+        .header-system { font-size: 13px; font-weight: 600; color: #aaa; }
 
         /* MAIN WRAPPER */
         .wrapper { display: flex; flex: 1; overflow: hidden; margin: 5px; background: white; border: 1px solid var(--tcs-border); }
@@ -175,27 +146,27 @@ $roll_number = !empty($candidate_info['registration_number']) ? $candidate_info[
         /* LEFT PANEL (Questions & Footer) */
         .left-panel { flex: 1; display: flex; flex-direction: column; border-right: 1px solid var(--tcs-border); }
         
-        .section-bar { background: var(--tcs-blue); color: white; padding: 10px 20px; font-size: 14px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
-        .section-bar span { background: rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 4px; }
+        .section-bar { background: var(--tcs-blue); color: white; padding: 8px 20px; font-size: 14px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+        .section-bar span { background: rgba(255,255,255,0.2); padding: 3px 10px; border-radius: 4px; }
 
-        .question-header { display: flex; justify-content: space-between; padding: 10px 20px; border-bottom: 1px solid var(--tcs-border); background: var(--tcs-light); font-weight: 600; font-size: 16px; }
+        .question-header { display: flex; justify-content: space-between; padding: 10px 20px; border-bottom: 1px solid var(--tcs-border); background: var(--tcs-light); font-weight: 600; font-size: 15px; }
         .marks-info { color: green; font-size: 14px; font-weight: 700; }
 
-        .question-body { flex: 1; padding: 20px; overflow-y: auto; font-size: 16px; }
-        .q-text { margin-bottom: 20px; line-height: 1.6; font-weight: bold; }
+        .question-body { flex: 1; padding: 25px; overflow-y: auto; font-size: 16px; }
+        .q-text { margin-bottom: 25px; line-height: 1.6; font-weight: bold; }
         
-        .options-list { display: flex; flex-direction: column; gap: 10px; }
-        .option-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px; border: 1px solid transparent; border-radius: 6px; cursor: pointer; transition: 0.2s; margin-bottom: 5px; }
-        .option-item input[type="radio"] { transform: scale(1.3); margin-top: 5px; cursor: pointer; flex-shrink: 0; }
+        .options-list { display: flex; flex-direction: column; gap: 12px; }
+        .option-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 15px; border: 1px solid transparent; border-radius: 6px; cursor: pointer; transition: 0.2s; background: #fdfdfd; border: 1px solid #eee; }
+        .option-item input[type="radio"] { transform: scale(1.3); margin-top: 4px; cursor: pointer; flex-shrink: 0; }
         .option-item:hover { background: #f0f7ff; border-color: #cce4ff; }
         
-        .opt-content { flex: 1; overflow-wrap: break-word; }
+        .opt-content { flex: 1; overflow-wrap: break-word; line-height: 1.5; }
         .opt-content code { background: #f4f4f4; padding: 2px 5px; border-radius: 3px; font-family: monospace; }
         .opt-content img { max-width: 100%; height: auto; display: block; margin-top: 5px; border-radius: 4px; }
 
         /* LEFT FOOTER ACTIONS */
-        .actions-footer { display: flex; justify-content: space-between; padding: 15px 20px; border-top: 1px solid var(--tcs-border); background: var(--tcs-light); }
-        .btn { padding: 8px 15px; border: 1px solid var(--tcs-border); background: white; font-weight: 600; cursor: pointer; font-size: 14px; color: var(--tcs-dark); transition: 0.2s; border-radius: 4px; }
+        .actions-footer { display: flex; justify-content: space-between; padding: 12px 20px; border-top: 1px solid var(--tcs-border); background: var(--tcs-light); flex-shrink: 0; }
+        .btn { padding: 8px 16px; border: 1px solid var(--tcs-border); background: white; font-weight: 600; cursor: pointer; font-size: 14px; color: var(--tcs-dark); transition: 0.2s; border-radius: 4px; }
         .btn:hover { background: #e0e0e0; }
         
         .btn-primary { background: var(--tcs-blue); color: white; border-color: #005a9e; }
@@ -206,39 +177,63 @@ $roll_number = !empty($candidate_info['registration_number']) ? $candidate_info[
 
         .left-actions { display: flex; gap: 10px; }
 
-        /* RIGHT PANEL RESTORED UI */
-        .right-panel { width: 320px; display: flex; flex-direction: column; background: var(--tcs-light); }
+        /* 🟢 OPTIMIZED RIGHT PANEL UI */
+        .right-panel { width: 340px; display: flex; flex-direction: column; background: var(--tcs-light); flex-shrink: 0; }
         
-        .candidate-box { display: flex; gap: 15px; padding: 15px; border-bottom: 1px solid var(--tcs-border); background: white; align-items: center; }
-        .candidate-photo { width: 60px; height: 60px; background: var(--tcs-border); display: flex; align-items: center; justify-content: center; font-size: 24px; color: white; border-radius: 4px; flex-shrink: 0;}
-        .candidate-details { font-size: 13px; line-height: 1.4; }
-        .candidate-details strong { font-size: 15px; color: var(--tcs-blue); display: block; }
+        /* Compact Video Proctoring Box */
+        .proctor-box {
+            background: #111; padding: 12px; display: flex; justify-content: center; align-items: center; 
+            border-bottom: 1px solid var(--tcs-border);
+        }
+        .video-wrapper { position: relative; width: 100%; max-width: 180px; border-radius: 6px; overflow: hidden; border: 1px solid #444; background: #000; box-shadow: 0 4px 6px rgba(0,0,0,0.3);}
+        .proctor-video { width: 100%; height: auto; display: block; transform: scaleX(-1); }
+        .rec-indicator {
+            position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.7); color: white;
+            font-size: 9px; padding: 2px 6px; border-radius: 12px; display: flex; align-items: center; gap: 4px; font-weight: bold; border: 1px solid rgba(255,255,255,0.2);
+        }
+        .rec-dot { width: 6px; height: 6px; background: #FF0000; border-radius: 50%; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0; } }
+        .ai-status {
+            position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.7); color: #4ADE80;
+            font-size: 10px; padding: 4px 0; font-family: monospace; letter-spacing: 0.5px; text-align: center;
+        }
+        
+        /* Compact Candidate Box */
+        .candidate-box { display: flex; gap: 12px; padding: 10px 15px; border-bottom: 1px solid var(--tcs-border); background: white; align-items: center; }
+        .candidate-photo { width: 45px; height: 45px; background: var(--tcs-border); display: flex; align-items: center; justify-content: center; font-size: 20px; color: white; border-radius: 4px; flex-shrink: 0;}
+        .candidate-details { font-size: 12px; line-height: 1.3; color: #555;}
+        .candidate-details strong { font-size: 14px; color: var(--tcs-blue); display: block; margin-bottom: 2px;}
 
-        .timer-box { padding: 15px; background: white; border-bottom: 1px solid var(--tcs-border); text-align: center; }
-        .timer-text { font-size: 13px; font-weight: 600; color: #555; }
-        .timer-value { font-size: 24px; font-weight: 700; color: var(--not-ans-red); margin-top: 5px; font-family: monospace; }
+        /* Inline Timer Box */
+        .timer-box { padding: 12px 15px; background: white; border-bottom: 1px solid var(--tcs-border); display: flex; justify-content: space-between; align-items: center; }
+        .timer-text { font-size: 14px; font-weight: 700; color: #444; }
+        .timer-value { font-size: 22px; font-weight: 800; color: var(--not-ans-red); font-family: monospace; }
 
-        .palette-legend { padding: 15px; border-bottom: 1px solid var(--tcs-border); display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 11px; background: white; }
-        .legend-item { display: flex; align-items: center; gap: 5px; }
-        .l-box { width: 22px; height: 20px; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 4px; font-size: 11px; border: 1px solid #aaa; }
+        /* Denser Palette Legend */
+        .palette-legend { padding: 10px 15px; border-bottom: 1px solid var(--tcs-border); display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; background: white; }
+        .legend-item { display: flex; align-items: center; gap: 5px; width: calc(50% - 4px); }
+        .legend-item.full-width { width: 100%; }
+        .l-box { width: 20px; height: 18px; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 4px; font-size: 10px; border: 1px solid #aaa; }
         
         .s-ans { background: var(--ans-blue); border-color: var(--ans-blue); color: white; }
         .s-not-ans { background: var(--not-ans-red); border-color: var(--not-ans-red); color: white; }
         .s-not-vis { background: white; color: black; }
         .s-rev { background: var(--rev-yellow); border-color: #B48600; color: black; }
         .s-rev-ans { background: var(--rev-ans-purple); border-color: var(--rev-ans-purple); color: white; position: relative; }
-        .s-rev-ans::after { content: '✓'; position: absolute; bottom: 0px; right: 2px; font-size: 10px; color: #5CB85C; font-weight: bold;}
+        .s-rev-ans::after { content: '✓'; position: absolute; bottom: -1px; right: 1px; font-size: 9px; color: #5CB85C; font-weight: bold;}
 
-        .palette-container { padding: 15px; flex: 1; overflow-y: auto; background: #eef2f5; }
-        .palette-title { font-weight: 700; font-size: 14px; margin-bottom: 10px; color: var(--tcs-blue); }
-        .palette-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+        /* Stretching Palette Container */
+        .palette-container { padding: 12px 15px; flex: 1; background: #eef2f5; display: flex; flex-direction: column; overflow: hidden; }
+        .palette-title { font-weight: 700; font-size: 13px; margin-bottom: 8px; color: var(--tcs-blue); flex-shrink: 0;}
+        .palette-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; overflow-y: auto; padding-right: 5px; align-content: flex-start; flex: 1; }
         
-        .p-btn { height: 35px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 13px; cursor: pointer; user-select: none; border: 1px solid #aaa; transition: 0.1s; }
+        .p-btn { height: 32px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; cursor: pointer; user-select: none; border: 1px solid #aaa; transition: 0.1s; }
         .p-btn:hover { opacity: 0.8; }
         .p-btn.current { border: 2px solid var(--tcs-dark); transform: scale(1.1); box-shadow: 0 0 5px rgba(0,0,0,0.3); z-index: 10; }
 
-        .submit-box { padding: 15px; border-top: 1px solid var(--tcs-border); background: white; text-align: center; }
-        .btn-final-submit { width: 100%; padding: 10px; font-size: 16px; background: var(--ans-green); color: white; border: none; font-weight: bold; cursor: pointer; border-radius: 4px; transition: 0.2s;}
+        /* Submit Footer */
+        .submit-box { padding: 12px 15px; border-top: 1px solid var(--tcs-border); background: white; text-align: center; flex-shrink: 0;}
+        .btn-final-submit { width: 100%; padding: 12px; font-size: 15px; background: var(--ans-green); color: white; border: none; font-weight: bold; cursor: pointer; border-radius: 4px; transition: 0.2s;}
         .btn-final-submit:hover { background: #4cae4c; }
 
         /* MODAL */
@@ -255,8 +250,8 @@ $roll_number = !empty($candidate_info['registration_number']) ? $candidate_info[
 
     <div id="start-overlay">
         <h2><i class="fas fa-lock" style="margin-right: 10px;"></i> Secured Exam Environment</h2>
-        <p>This exam operates in a strict, locked full-screen mode. Switching tabs, refreshing, or exiting full screen will be recorded by the system.<br><br><b>Your time will start ticking as soon as you click the button below.</b></p>
-        <button class="btn-start-fs" onclick="launchFullScreenExam()">Enter Full Screen & Start Exam</button>
+        <p>This exam operates in a strict, locked full-screen mode with active AI Video Monitoring. Switching tabs, refreshing, or exiting full screen will be recorded by the system.<br><br><b>Please allow Camera Permissions on the next screen. Your time will start ticking as soon as you enter.</b></p>
+        <button class="btn-start-fs" onclick="launchFullScreenExam()">Allow Camera & Start Exam</button>
     </div>
 
     <div class="header">
@@ -291,6 +286,14 @@ $roll_number = !empty($candidate_info['registration_number']) ? $candidate_info[
 
         <div class="right-panel">
             
+            <div class="proctor-box">
+                <div class="video-wrapper">
+                    <div class="rec-indicator"><div class="rec-dot"></div> REC</div>
+                    <video id="dummyProctorVideo" class="proctor-video" autoplay muted playsinline></video>
+                    <div class="ai-status"><i class="fas fa-shield-alt"></i> AI Proctoring Active</div>
+                </div>
+            </div>
+            
             <div class="candidate-box">
                 <div class="candidate-photo"><i class="fas fa-user"></i></div>
                 <div class="candidate-details">
@@ -309,8 +312,8 @@ $roll_number = !empty($candidate_info['registration_number']) ? $candidate_info[
                 <div class="legend-item"><div class="l-box s-ans" id="legAns">0</div> Answered</div>
                 <div class="legend-item"><div class="l-box s-not-ans" id="legNotAns">0</div> Not Answered</div>
                 <div class="legend-item"><div class="l-box s-not-vis" id="legNotVis"><?php echo $total_questions; ?></div> Not Visited</div>
-                <div class="legend-item"><div class="l-box s-rev" id="legRev">0</div> Marked for Review</div>
-                <div class="legend-item" style="grid-column: 1 / -1;"><div class="l-box s-rev-ans" id="legRevAns">0</div> Answered & Marked for Review</div>
+                <div class="legend-item"><div class="l-box s-rev" id="legRev">0</div> Marked Review</div>
+                <div class="legend-item full-width"><div class="l-box s-rev-ans" id="legRevAns">0</div> Answered & Marked for Review</div>
             </div>
 
             <div class="palette-container">
@@ -380,7 +383,6 @@ $roll_number = !empty($candidate_info['registration_number']) ? $candidate_info[
             return "Are you sure you want to leave? Your exam might be submitted automatically.";
         };
 
-        // HELPER: Safely handle HTML tags in text
         function escapeHTML(str) {
             if (!str) return "";
             return str.replace(/[&<>"']/g, function(m) {
@@ -388,7 +390,6 @@ $roll_number = !empty($candidate_info['registration_number']) ? $candidate_info[
             });
         }
 
-        // HELPER: Detect if string is an image path or contains HTML tags
         function formatContent(content) {
             if (!content) return "";
             if (content.match(/\.(jpeg|jpg|gif|png)$/i)) {
@@ -398,6 +399,20 @@ $roll_number = !empty($candidate_info['registration_number']) ? $candidate_info[
                 return `<code>${escapeHTML(content)}</code>`;
             }
             return content;
+        }
+
+        // Start Dummy Video Feed
+        function startDummyProctoring() {
+            const video = document.getElementById('dummyProctorVideo');
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({ video: true })
+                .then(function(stream) {
+                    video.srcObject = stream;
+                })
+                .catch(function(err) {
+                    console.log("Camera access denied or unavailable.");
+                });
+            }
         }
 
         // --- FULLSCREEN LOGIC ---
@@ -412,6 +427,9 @@ $roll_number = !empty($candidate_info['registration_number']) ? $candidate_info[
             if (!hasStarted && questions.length > 0) {
                 hasStarted = true;
                 Object.keys(answers).forEach(qId => visited[qId] = true);
+                
+                startDummyProctoring(); 
+                
                 renderQuestion(0);
                 startTimer();
             }
@@ -456,7 +474,6 @@ $roll_number = !empty($candidate_info['registration_number']) ? $candidate_info[
                 <div class="q-text">${formatContent(q.question_text)}</div>
                 <div class="options-list">${optionsHtml}</div>`;
             
-            // --- SMART SUBMIT BUTTON LOGIC ---
             const saveBtn = document.getElementById('btnSaveNext');
             if (idx === totalQuestions - 1) {
                 saveBtn.innerHTML = '<i class="fas fa-check-double" style="margin-right:5px;"></i> Save & Submit Test';
@@ -539,7 +556,6 @@ $roll_number = !empty($candidate_info['registration_number']) ? $candidate_info[
 
             document.getElementById('paletteGrid').innerHTML = html;
             
-            // UPDATE LEGEND COUNTS
             document.getElementById('legAns').innerText = cAns;
             document.getElementById('legNotAns').innerText = cNotAns;
             document.getElementById('legNotVis').innerText = cNotVis;
@@ -600,14 +616,11 @@ $roll_number = !empty($candidate_info['registration_number']) ? $candidate_info[
             .then(data => {
                 if (data.success) {
                     if (document.exitFullscreen) { document.exitFullscreen(); }
-                    
-                    // --- REDIRECT DIRECTLY TO DASHBOARD ---
                     window.location.replace('candidate-dashboard.php');
                 }
                 else alert('Submission Error: ' + data.error);
             })
             .catch(err => {
-                // Failsafe redirect to dashboard if network glitches
                 window.location.replace('candidate-dashboard.php');
             });
         }

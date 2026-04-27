@@ -123,10 +123,10 @@ try {
                 // Insert registration securely using the user_id as the candidate_id
                 $insertStmt = $pdo->prepare("
                     INSERT INTO exam_registrations (candidate_id, session_id, registration_status, attendance_marked)
-                    VALUES (?, ?, ?, false)
+                    VALUES (?, ?, ?, false) RETURNING id
                 ");
                 $insertStmt->execute([$_SESSION['user_id'], $exam_id, $initial_status]);
-                $registration_id = (int)$pdo->lastInsertId();
+                $registration_id = $insertStmt->fetchColumn();
                 
                 $pdo->commit();
                 
@@ -169,6 +169,11 @@ try {
             --primary-hover: #047857; 
             --primary-bg: #D1FAE5; 
             --secondary: #0F172A; 
+            
+            /* 🟢 ADDED MISSING SUCCESS VARIABLES */
+            --success: #059669;
+            --success-bg: #D1FAE5;
+            
             --accent: #10B981; 
             --text-main: #1E293B; 
             --text-muted: #64748B; 
@@ -258,7 +263,7 @@ try {
             text-align: center; padding: 12px; border-radius: var(--radius-md); margin-bottom: 25px;
             font-size: 15px; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent;
         }
-        .seat-high { background: #D1FAE5; color: var(--success); border-color: #A7F3D0; }
+        .seat-high { background: var(--success-bg); color: var(--success); border-color: #A7F3D0; }
         .seat-low { background: #FEF3C7; color: #D97706; border-color: #FDE68A; }
         .seat-none { background: var(--danger-bg); color: var(--danger); border-color: #FECACA; }
         .seat-practice { background: var(--practice-bg); color: var(--practice); border-color: #BFDBFE; }
@@ -298,7 +303,7 @@ try {
         .btn-cancel { background: white; color: var(--text-dark); border: 1px solid var(--border); }
         .btn-cancel:hover { background: var(--primary-bg); border-color: var(--primary); color: var(--primary);}
         .btn-submit { background: var(--success); color: white; box-shadow: 0 4px 15px rgba(5, 150, 105, 0.2); }
-        .btn-submit:hover:not(:disabled) { background: #047857; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(5, 150, 105, 0.3); }
+        .btn-submit:hover:not(:disabled) { background: var(--primary-hover); transform: translateY(-2px); box-shadow: 0 8px 20px rgba(5, 150, 105, 0.3); }
         .btn-submit:disabled { background: #94A3B8; cursor: not-allowed; box-shadow: none; opacity: 0.7; }
         
         .btn-practice-start { background: var(--practice); color: white; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.2); }

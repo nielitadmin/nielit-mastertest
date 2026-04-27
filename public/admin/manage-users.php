@@ -16,7 +16,7 @@ $error = '';
 
 try {
     // ====================================================================
-    // 1. HANDLE BULK DELETION (NEW)
+    // 1. HANDLE BULK DELETION
     // ====================================================================
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && $_POST['bulk_action'] === 'delete') {
         if (!empty($_POST['selected_users']) && is_array($_POST['selected_users'])) {
@@ -97,7 +97,7 @@ try {
     }
 
     // ====================================================================
-    // 2. HANDLE SINGLE ACTIONS (Deactivate/Activate)
+    // 2. HANDLE SINGLE ACTIONS (Deactivate)
     // ====================================================================
     if (isset($_GET['deactivate']) && is_numeric($_GET['deactivate'])) {
         if ($_GET['deactivate'] != $_SESSION['user_id']) {
@@ -110,25 +110,57 @@ try {
         }
     }
 
+    // ====================================================================
+    // 3. HANDLE ACTIVATION & AUTOMATED APPROVAL EMAIL (NEW)
+    // ====================================================================
     if (isset($_GET['activate']) && is_numeric($_GET['activate'])) {
+        $activate_id = $_GET['activate'];
+        
+        // 1. Activate the user in the database
         $stmt = $pdo->prepare("UPDATE users SET is_active = true WHERE id = ?");
-        $stmt->execute([$_GET['activate']]);
+        $stmt->execute([$activate_id]);
+
+        // 2. Fetch user details to send the approval email
+        $userStmt = $pdo->prepare("SELECT email, full_name, username, role FROM users WHERE id = ?");
+        $userStmt->execute([$activate_id]);
+        $activatedUser = $userStmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($activatedUser && !empty($activatedUser['email'])) {
+            $roleName = ucfirst($activatedUser['role']);
+            $html_body = "
+                <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #E2E8F0; border-radius: 16px; background: #FFFFFF;'>
+                    <div style='text-align: center; margin-bottom: 20px;'>
+                        <h2 style='color: #059669; margin: 0;'>Account Activated!</h2>
+                        <p style='color: #64748B; font-size: 14px; margin-top: 5px;'>NIELIT Administration</p>
+                    </div>
+                    <p style='color: #0F172A; font-size: 15px;'>Dear <strong>{$activatedUser['full_name']}</strong>,</p>
+                    <p style='color: #475569; font-size: 15px; line-height: 1.6;'>Great news! Your <strong>{$roleName}</strong> account on the NIELIT Centralized Assessment Portal has been successfully reviewed and activated by a System Administrator.</p>
+                    <div style='background: #F0FDF4; padding: 15px; border-radius: 8px; border-left: 4px solid #059669; margin: 15px 0;'>
+                        <p style='margin: 0; color: #065F46; font-size: 14px;'>You can now log in using your assigned username: <strong>{$activatedUser['username']}</strong></p>
+                    </div>
+                    <div style='text-align: center; margin-top: 25px;'>
+                        <a href='https://test.nielitbhubaneswar.in' style='background: #1D4ED8; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;'>Go to Portal</a>
+                    </div>
+                    <hr style='border: none; border-top: 1px solid #E2E8F0; margin: 25px 0;'>
+                    <p style='color: #64748B; font-size: 11px; margin: 0; text-align: center;'>Automated security message. Do not reply.</p>
+                </div>
+            ";
+            // Fire the email
+            sendNielitEmail($activatedUser['email'], $activatedUser['full_name'], "Your NIELIT Account is Active", $html_body);
+        }
+
         header("Location: manage-users.php?msg=activated");
         exit();
     }
 
-    // Handle single hard delete via GET (Kept for the individual trash can icon)
     if (isset($_GET['hard_delete']) && is_numeric($_GET['hard_delete'])) {
-        // We can just utilize the bulk delete logic via an array simulation
         $_POST['bulk_action'] = 'delete';
         $_POST['selected_users'] = [$_GET['hard_delete']];
-        // The page will refresh anyway
     }
 
-    // Handle success messages from redirects
     if (isset($_GET['msg'])) {
         if ($_GET['msg'] === 'deactivated') $message = "User account successfully suspended.";
-        if ($_GET['msg'] === 'activated') $message = "User account successfully activated.";
+        if ($_GET['msg'] === 'activated') $message = "User account successfully activated and notified via email.";
         if ($_GET['msg'] === 'bulk_deleted') $message = htmlspecialchars($_GET['count']) . " user(s) permanently deleted and notified.";
         if ($_GET['msg'] === 'delete_failed') {
             $err_msg = isset($_GET['err']) ? htmlspecialchars($_GET['err']) : "Unknown error";
@@ -149,11 +181,13 @@ try {
     // Calculate Stats
     $totalUsers = count($users);
     $adminCount = 0;
+    $coordCount = 0; // NEW: Coordinator counter
     $candidateCount = 0;
     $activeCount = 0;
 
     foreach ($users as $u) {
         if ($u['role'] === 'admin') $adminCount++;
+        if ($u['role'] === 'coordinator') $coordCount++;
         if ($u['role'] === 'candidate') $candidateCount++;
         if ($u['is_active']) $activeCount++;
     }
@@ -219,27 +253,29 @@ try {
         .page-header h1 { font-size: 28px; font-weight: 800; color: var(--text-dark); letter-spacing: -0.5px; display: flex; align-items: center; gap: 10px; }
         
         .header-actions { display: flex; gap: 12px; flex-wrap: wrap; }
-        .btn-add { background: var(--primary); color: white; padding: 12px 24px; border-radius: var(--radius-md); text-decoration: none; font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; gap: 8px; transition: 0.3s; box-shadow: 0 4px 15px rgba(29, 78, 216, 0.2); }
-        .btn-add:hover { background: #1e3a8a; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(29, 78, 216, 0.3); }
+        .btn-add { background: var(--primary); color: white; padding: 12px 24px; border-radius: var(--radius-md); text-decoration: none; font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; gap: 8px; transition: 0.3s; box-shadow: 0 4px 15px rgba(29, 78, 216, 0.2); border: 2px solid var(--primary); }
+        .btn-add:hover { background: #1e3a8a; border-color: #1e3a8a; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(29, 78, 216, 0.3); }
+
+        .btn-outline { background: white; color: var(--primary); padding: 12px 24px; border-radius: var(--radius-md); border: 2px solid var(--primary); text-decoration: none; font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; gap: 8px; transition: 0.3s; box-shadow: var(--shadow-sm); }
+        .btn-outline:hover { background: var(--primary-bg); transform: translateY(-2px); box-shadow: 0 6px 15px rgba(29, 78, 216, 0.15); }
 
         .alert { padding: 16px 20px; border-radius: var(--radius-md); font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 10px; margin-bottom: 25px; animation: slideIn 0.4s ease; border: 1px solid transparent; }
         .alert-success { background: var(--success-bg); color: var(--success); border-color: #A7F3D0; }
         .alert-error { background: var(--danger-bg); color: var(--danger); border-color: #FECACA; }
         @keyframes slideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
 
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
         .stat-card { background: rgba(255,255,255,0.85); backdrop-filter: blur(10px); padding: 20px; border-radius: var(--radius-md); border: 1px solid var(--border); box-shadow: var(--shadow-sm); display: flex; align-items: center; gap: 15px; }
         .stat-icon { width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
         .stat-card:nth-child(1) .stat-icon { background: var(--primary-bg); color: var(--primary); }
         .stat-card:nth-child(2) .stat-icon { background: #E0E7FF; color: #4F46E5; }
-        .stat-card:nth-child(3) .stat-icon { background: var(--success-bg); color: var(--success); }
-        .stat-card:nth-child(4) .stat-icon { background: var(--warning-bg); color: var(--warning); }
+        .stat-card:nth-child(3) .stat-icon { background: #F5F3FF; color: #7C3AED; } /* Coordinator Icon Color */
+        .stat-card:nth-child(4) .stat-icon { background: var(--success-bg); color: var(--success); }
         .stat-info h3 { font-size: 24px; font-weight: 800; color: var(--text-dark); line-height: 1; margin-bottom: 5px; }
         .stat-info p { font-size: 13px; color: var(--text-muted); font-weight: 600; }
 
         .table-wrapper { background: rgba(255,255,255,0.9); backdrop-filter: blur(10px); border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow-md); padding: 25px; margin-bottom: 40px; }
 
-        /* 🆕 Advanced Filtering UI */
         .table-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; background: #F8FAFC; padding: 15px; border-radius: 12px; border: 1px solid var(--border);}
         
         .filter-group { display: flex; gap: 15px; flex-wrap: wrap; flex: 1;}
@@ -252,14 +288,12 @@ try {
         .filter-select { padding: 10px 15px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); font-family: inherit; font-size: 13px; color: var(--text-dark); outline: none; cursor: pointer; min-width: 150px; font-weight: 600;}
         .filter-select:focus { border-color: var(--primary); }
 
-        /* 🆕 Bulk Delete Button */
         .btn-bulk-delete { background: var(--danger); color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; display: none; align-items: center; gap: 8px; box-shadow: 0 4px 10px rgba(220, 38, 38, 0.2); transition: 0.3s;}
         .btn-bulk-delete:hover { background: #B91C1C; transform: translateY(-2px);}
 
         .table-responsive { overflow-x: auto; }
         table { width: 100%; border-collapse: separate; border-spacing: 0; min-width: 900px; }
         
-        /* 🆕 Checkbox Column Styling */
         th { background: #F1F5F9; color: var(--text-muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 15px; text-align: left; border-bottom: 2px solid var(--border); border-top: 1px solid var(--border); }
         th:first-child { border-left: 1px solid var(--border); border-top-left-radius: 10px; border-bottom-left-radius: 10px; width: 40px; text-align: center;}
         th:last-child { border-right: 1px solid var(--border); border-top-right-radius: 10px; border-bottom-right-radius: 10px;}
@@ -269,7 +303,6 @@ try {
         tr:last-child td { border-bottom: none; }
         tr:hover td { background: var(--bg-body); }
 
-        /* Custom Checkbox */
         .custom-checkbox { width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary);}
 
         .user-main-info { display: flex; flex-direction: column; }
@@ -280,6 +313,7 @@ try {
         .badge-admin { background: var(--primary-bg); color: var(--primary); }
         .badge-candidate { background: #E0E7FF; color: #4F46E5; }
         .badge-tp { background: #F3E8FF; color: #7C3AED; }
+        .badge-coordinator { background: #F5F3FF; color: #7C3AED; } /* NEW Coordinator Badge */
         .badge-active { background: var(--success-bg); color: var(--success); }
         .badge-inactive { background: var(--danger-bg); color: var(--danger); }
 
@@ -329,7 +363,11 @@ try {
         
         <div class="page-header">
             <h1><i class="fas fa-users-cog" style="color: var(--primary);"></i> Directory</h1>
+            
             <div class="header-actions">
+                <a href="bulk-upload-users.php" class="btn-outline">
+                    <i class="fas fa-file-csv"></i> Bulk Upload
+                </a>
                 <a href="add-user.php" class="btn-add">
                     <i class="fas fa-user-plus"></i> Add New User
                 </a>
@@ -359,17 +397,17 @@ try {
                 </div>
             </div>
             <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-user-tie"></i></div>
+                <div class="stat-info">
+                    <h3><?php echo number_format($coordCount); ?></h3>
+                    <p>Coordinators</p>
+                </div>
+            </div>
+            <div class="stat-card">
                 <div class="stat-icon"><i class="fas fa-user-graduate"></i></div>
                 <div class="stat-info">
                     <h3><?php echo number_format($candidateCount); ?></h3>
                     <p>Candidates</p>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon"><i class="fas fa-user-check"></i></div>
-                <div class="stat-info">
-                    <h3><?php echo number_format($activeCount); ?></h3>
-                    <p>Active Accounts</p>
                 </div>
             </div>
         </div>
@@ -388,6 +426,7 @@ try {
                         <select id="roleFilter" class="filter-select" onchange="filterTable()">
                             <option value="all">All Roles</option>
                             <option value="admin">Administrators</option>
+                            <option value="coordinator">Coordinators</option> 
                             <option value="candidate">Candidates</option>
                             <option value="tp">Training Partners</option>
                         </select>
@@ -395,7 +434,7 @@ try {
                         <select id="statusFilter" class="filter-select" onchange="filterTable()">
                             <option value="all">All Statuses</option>
                             <option value="active">Active</option>
-                            <option value="suspended">Suspended</option>
+                            <option value="suspended">Suspended / Pending</option>
                         </select>
                     </div>
 
@@ -443,7 +482,11 @@ try {
                                     <td>
                                         <div style="display: flex; gap: 5px; flex-direction: column; align-items: flex-start;">
                                             <span class="badge badge-<?php echo $user['role']; ?>">
-                                                <?php echo $user['role'] === 'admin' ? '<i class="fas fa-shield-alt"></i>' : '<i class="fas fa-user"></i>'; ?>
+                                                <?php 
+                                                    if ($user['role'] === 'admin') echo '<i class="fas fa-shield-alt"></i>';
+                                                    elseif ($user['role'] === 'coordinator') echo '<i class="fas fa-user-tie"></i>';
+                                                    else echo '<i class="fas fa-user"></i>';
+                                                ?>
                                                 <?php echo ucfirst($user['role']); ?>
                                             </span>
                                             <span class="badge badge-<?php echo $user['is_active'] ? 'active' : 'inactive'; ?>">
@@ -480,7 +523,7 @@ try {
                                                     </a>
                                                 <?php endif; ?>
                                             <?php else: ?>
-                                                <a href="?activate=<?php echo $user['id']; ?>" class="btn-action btn-activate" onclick="return confirm('Reactivate this user account?')" title="Activate User">
+                                                <a href="?activate=<?php echo $user['id']; ?>" class="btn-action btn-activate" onclick="return confirm('Activate this account and send an approval email?')" title="Activate & Notify">
                                                     <i class="fas fa-check"></i>
                                                 </a>
                                             <?php endif; ?>

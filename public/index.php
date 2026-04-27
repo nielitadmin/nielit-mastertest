@@ -284,6 +284,9 @@ session_destroy();
             padding: 15px 40px; background: white; border-top: 1px solid var(--border);
             font-size: 12px; font-weight: 600; color: var(--text-muted); z-index: 10; margin-top: auto;
         }
+        .footer-left { display: flex; flex-direction: column; gap: 4px; }
+        .credit-text { font-size: 12px; color: var(--primary-light); font-weight: 700; display: flex; align-items: center; gap: 6px; }
+        
         .footer-links { display: flex; gap: 20px; flex-wrap: wrap;}
         .footer-links a { color: var(--text-muted); text-decoration: none; transition: 0.2s; }
         .footer-links a:hover { color: var(--primary); }
@@ -338,7 +341,8 @@ session_destroy();
             /* Fix Body Content */
             .login-section { flex-direction: column; }
             .action-card { padding: 20px; }
-            .footer { flex-direction: column; gap: 10px; text-align: center; justify-content: center; }
+            .footer { flex-direction: column; gap: 12px; text-align: center; justify-content: center; }
+            .footer-left { align-items: center; }
             .footer-links { justify-content: center; }
         }
 
@@ -573,7 +577,10 @@ session_destroy();
     </section>
 
     <footer class="footer">
-        <p>&copy; <?php echo date('Y'); ?> NIELIT Bhubaneswar. All Rights Reserved.</p>
+        <div class="footer-left">
+            <p>&copy; <?php echo date('Y'); ?> NIELIT Bhubaneswar. All Rights Reserved.</p>
+            <div class="credit-text"><i class="fas fa-code"></i> Designed & Developed by Ritwik Sonam and team</div>
+        </div>
         <div class="footer-links">
             <a href="#">Privacy Policy</a>
             <a href="#">Terms of Use</a>

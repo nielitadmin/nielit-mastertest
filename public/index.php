@@ -579,7 +579,7 @@ session_destroy();
     <footer class="footer">
         <div class="footer-left">
             <p>&copy; <?php echo date('Y'); ?> NIELIT Bhubaneswar. All Rights Reserved.</p>
-            <div class="credit-text"><i class="fas fa-code"></i> Designed & Developed by Ritwik Sonam and team</div>
+            <div class="credit-text"><i class="fas fa-code"></i> Designed & Developed by NIELIT BHUBANESWAR IT TEAM</div>
         </div>
         <div class="footer-links">
             <a href="#">Privacy Policy</a>

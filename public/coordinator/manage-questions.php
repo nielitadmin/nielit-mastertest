@@ -14,26 +14,54 @@ $message = '';
 $error = '';
 
 try {
-    // --- 🆕 Add New Module (Category) ---
+    // --- Add New Module (Category) ---
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_module'])) {
         $mod_code = strtoupper(trim($_POST['module_code']));
         $mod_name = trim($_POST['module_name']);
         $mod_duration = (int)$_POST['duration_minutes'];
         $mod_marks = (int)$_POST['total_marks']; 
-        $mod_chapters = (int)$_POST['chapter_count']; // 🟢 NEW: Capture Chapter Count
+        $mod_chapters = (int)$_POST['chapter_count']; 
         
         if (!empty($mod_code) && !empty($mod_name)) {
             try {
-                // Check for duplicates
                 $check = $pdo->prepare("SELECT id FROM exam_categories WHERE category_code = ?");
                 $check->execute([$mod_code]);
                 if ($check->fetch()) {
                     $error = "A module with the code '$mod_code' already exists.";
                 } else {
-                    // 🟢 NEW: Insert chapter_count into the database
                     $stmt = $pdo->prepare("INSERT INTO exam_categories (category_code, category_name, duration_minutes, total_marks, chapter_count) VALUES (?, ?, ?, ?, ?)");
                     $stmt->execute([$mod_code, $mod_name, $mod_duration, $mod_marks, $mod_chapters]);
                     header("Location: manage-questions.php?msg=module_created");
+                    exit();
+                }
+            } catch (PDOException $e) {
+                $error = "Database Error: " . $e->getMessage();
+            }
+        } else {
+            $error = "Module Code and Name are required.";
+        }
+    }
+
+    // --- 🟢 NEW: Edit Existing Module ---
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_module'])) {
+        $cat_id = (int)$_POST['edit_module_id'];
+        $mod_code = strtoupper(trim($_POST['edit_module_code']));
+        $mod_name = trim($_POST['edit_module_name']);
+        $mod_duration = (int)$_POST['edit_duration_minutes'];
+        $mod_marks = (int)$_POST['edit_total_marks']; 
+        $mod_chapters = (int)$_POST['edit_chapter_count']; 
+        
+        if (!empty($mod_code) && !empty($mod_name) && $cat_id > 0) {
+            try {
+                // Check for duplicates (excluding the current module being edited)
+                $check = $pdo->prepare("SELECT id FROM exam_categories WHERE category_code = ? AND id != ?");
+                $check->execute([$mod_code, $cat_id]);
+                if ($check->fetch()) {
+                    $error = "Another module with the code '$mod_code' already exists.";
+                } else {
+                    $stmt = $pdo->prepare("UPDATE exam_categories SET category_code=?, category_name=?, duration_minutes=?, total_marks=?, chapter_count=? WHERE id=?");
+                    $stmt->execute([$mod_code, $mod_name, $mod_duration, $mod_marks, $mod_chapters, $cat_id]);
+                    header("Location: manage-questions.php?msg=module_updated");
                     exit();
                 }
             } catch (PDOException $e) {
@@ -50,27 +78,25 @@ try {
         try {
             $pdo->beginTransaction();
             if ($cat_id === 'null') {
-                $stmt = $pdo->prepare("DELETE FROM questions WHERE category_id IS NULL");
-                $stmt->execute();
+                $pdo->prepare("DELETE FROM question_options WHERE question_id IN (SELECT id FROM questions WHERE category_id IS NULL)")->execute();
+                $pdo->prepare("DELETE FROM candidate_responses WHERE question_id IN (SELECT id FROM questions WHERE category_id IS NULL)")->execute();
+                $pdo->prepare("DELETE FROM questions WHERE category_id IS NULL")->execute();
             } else {
-                $stmt = $pdo->prepare("DELETE FROM questions WHERE category_id = ?");
-                $stmt->execute([$cat_id]);
-                $stmtCat = $pdo->prepare("DELETE FROM exam_categories WHERE id = ?");
-                $stmtCat->execute([$cat_id]);
+                $pdo->prepare("DELETE FROM question_options WHERE question_id IN (SELECT id FROM questions WHERE category_id = ?)")->execute([$cat_id]);
+                $pdo->prepare("DELETE FROM candidate_responses WHERE question_id IN (SELECT id FROM questions WHERE category_id = ?)")->execute([$cat_id]);
+                $pdo->prepare("DELETE FROM questions WHERE category_id = ?")->execute([$cat_id]);
+                $pdo->prepare("DELETE FROM candidate_responses WHERE registration_id IN (SELECT id FROM exam_registrations WHERE session_id IN (SELECT id FROM exam_sessions WHERE category_id = ?))")->execute([$cat_id]);
+                $pdo->prepare("DELETE FROM exam_results WHERE registration_id IN (SELECT id FROM exam_registrations WHERE session_id IN (SELECT id FROM exam_sessions WHERE category_id = ?))")->execute([$cat_id]);
+                $pdo->prepare("DELETE FROM exam_registrations WHERE session_id IN (SELECT id FROM exam_sessions WHERE category_id = ?)")->execute([$cat_id]);
+                $pdo->prepare("DELETE FROM exam_sessions WHERE category_id = ?")->execute([$cat_id]);
+                $pdo->prepare("DELETE FROM exam_categories WHERE id = ?")->execute([$cat_id]);
             }
             $pdo->commit();
             header("Location: manage-questions.php?msg=module_deleted");
             exit();
         } catch (PDOException $e) {
             $pdo->rollBack();
-            if ($cat_id === 'null') {
-                $stmt = $pdo->prepare("UPDATE questions SET is_active = false WHERE category_id IS NULL");
-                $stmt->execute();
-            } else {
-                $stmt = $pdo->prepare("UPDATE questions SET is_active = false WHERE category_id = ?");
-                $stmt->execute([$cat_id]);
-            }
-            header("Location: manage-questions.php?msg=module_deactivated");
+            header("Location: manage-questions.php?msg=module_deactivated&err=" . urlencode($e->getMessage()));
             exit();
         }
     }
@@ -92,12 +118,16 @@ try {
     }
 
     // Handle Messages from Redirects
+    $warning = '';
     if (isset($_GET['msg'])) {
         if ($_GET['msg'] === 'deactivated') $message = "Question deactivated successfully.";
         if ($_GET['msg'] === 'activated') $message = "Question activated successfully.";
-        if ($_GET['msg'] === 'module_deleted') $message = "✅ Success: Module and all its questions were permanently deleted.";
-        if ($_GET['msg'] === 'module_deactivated') $message = "⚠️ Note: Module could not be hard-deleted because it is linked to past scorecards. Questions have been deactivated.";
+        if ($_GET['msg'] === 'module_deleted') $message = "✅ Success: Module and all its contents were permanently deleted.";
         if ($_GET['msg'] === 'module_created') $message = "✅ Success: New module with chapters created successfully!";
+        if ($_GET['msg'] === 'module_updated') $message = "✅ Success: Module settings updated successfully!";
+        if ($_GET['msg'] === 'module_deactivated') {
+            $warning = "⚠️ Warning: Database blocked the deletion. Error: " . htmlspecialchars($_GET['err'] ?? 'Unknown constraint');
+        }
     }
 
     // Get filter parameters
@@ -140,9 +170,8 @@ try {
         'Other' => ['title' => 'Other Modules', 'icon' => 'fa-folder-open', 'theme' => 'gray', 'modules' => [], 'q_count' => 0]
     ];
 
-    // Pre-populate all categories so empty folders are visible
-    // 🟢 NEW: Fetch chapter_count
-    $categories = $pdo->query("SELECT id, category_code, category_name, chapter_count FROM exam_categories ORDER BY category_code ASC")->fetchAll(PDO::FETCH_ASSOC);
+    // 🟢 Fetch duration and marks as well so they can be passed to the edit modal
+    $categories = $pdo->query("SELECT id, category_code, category_name, duration_minutes, total_marks, chapter_count FROM exam_categories ORDER BY category_code ASC")->fetchAll(PDO::FETCH_ASSOC);
     
     foreach ($categories as $cat) {
         $code = strtoupper($cat['category_code'] ?? '');
@@ -162,9 +191,13 @@ try {
         $module_name = $cat['category_code'] . ': ' . $cat['category_name'];
         $course_groups[$parent_key]['modules'][$module_name] = [
             'cat_id' => $cat['id'],
-            'chapter_count' => $cat['chapter_count'] ?? 1, // 🟢 Save chapter count
+            'cat_code' => $cat['category_code'],
+            'cat_name' => $cat['category_name'],
+            'duration' => $cat['duration_minutes'],
+            'marks' => $cat['total_marks'],
+            'chapter_count' => $cat['chapter_count'] ?? 1, 
             'chapters' => [],
-            'unassigned' => [] // For questions that don't have a chapter_number assigned yet
+            'unassigned' => [] 
         ];
     }
 
@@ -189,13 +222,16 @@ try {
         if (!isset($course_groups[$parent_key]['modules'][$module_name])) {
             $course_groups[$parent_key]['modules'][$module_name] = [
                 'cat_id' => $q['category_id'],
+                'cat_code' => $q['category_code'],
+                'cat_name' => $q['category_name'],
+                'duration' => 120, // defaults if orphaned
+                'marks' => 100,
                 'chapter_count' => 1,
                 'chapters' => [],
                 'unassigned' => []
             ];
         }
         
-        // 🟢 NEW: Sort question into the correct chapter array
         $chap_num = $q['chapter_number'] ?? null;
         if ($chap_num) {
             $course_groups[$parent_key]['modules'][$module_name]['chapters'][$chap_num][] = $q;
@@ -206,7 +242,6 @@ try {
         $course_groups[$parent_key]['q_count']++;
     }
     
-    // Only show Parent Categories that have at least one module (even if empty)
     $course_groups = array_filter($course_groups, function($group) { return count($group['modules']) > 0; });
     
     // Get statistics
@@ -223,7 +258,7 @@ try {
     $is_filtered = (!empty($category_filter) || !empty($difficulty_filter));
 
 } catch (PDOException $e) {
-    $error = "System Database Error. Did you remember to run the SQL commands to add chapter_count? Error: " . $e->getMessage();
+    $error = "System Database Error. Error: " . $e->getMessage();
 }
 ?>
 
@@ -357,7 +392,7 @@ try {
         .folder-content.active { display: block; animation: slideDown 0.3s ease-out; }
         @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* 🟢 NEW: CHAPTER STYLES */
+        /* CHAPTER STYLES */
         .chapter-box { background: white; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 15px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.02);}
         .chapter-header { padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; background: #FFFFFF; cursor: pointer; transition: 0.2s;}
         .chapter-header:hover { background: #F1F5F9; }
@@ -461,6 +496,9 @@ try {
 
         <?php if ($message): ?>
             <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo $message; ?></div>
+        <?php endif; ?>
+        <?php if ($warning): ?>
+            <div class="alert" style="background: var(--warning-bg); color: var(--warning); border-color: #FDE68A;"><i class="fas fa-exclamation-triangle"></i> <?php echo $warning; ?></div>
         <?php endif; ?>
         <?php if ($error): ?>
             <div class="alert alert-error"><i class="fas fa-exclamation-triangle"></i> <?php echo $error; ?></div>
@@ -593,6 +631,10 @@ try {
                                         <a href="add-question.php?category_id=<?php echo $cat_id; ?>" class="btn-folder-add" onclick="event.stopPropagation();">
                                             <i class="fas fa-plus"></i> Add Question
                                         </a>
+                                        
+                                        <button type="button" class="btn-folder-add" onclick="event.stopPropagation(); openEditModal('<?php echo $cat_id; ?>', '<?php echo addslashes($folder_data['cat_code']); ?>', '<?php echo addslashes($folder_data['cat_name']); ?>', '<?php echo $folder_data['duration']; ?>', '<?php echo $folder_data['marks']; ?>', '<?php echo $total_chapters; ?>')" style="background: var(--warning-bg); color: var(--warning); border-color: #FDE68A;">
+                                            <i class="fas fa-edit"></i> Edit Module
+                                        </button>
                                     <?php endif; ?>
                                     
                                     <a href="?delete_module=<?php echo $cat_id; ?>" class="btn-folder-delete" onclick="event.stopPropagation(); return confirm('WARNING: This will delete ALL questions inside this module. Are you sure?');">
@@ -606,7 +648,6 @@ try {
                             <div class="folder-content" id="<?php echo $folder_id; ?>">
                                 
                                 <?php 
-                                // 🟢 LOOP THROUGH ALL DECLARED CHAPTERS (1 to N)
                                 for ($i = 1; $i <= $total_chapters; $i++): 
                                     $chap_id = $folder_id . "-chap-" . $i;
                                     $chap_questions = $folder_data['chapters'][$i] ?? [];
@@ -801,11 +842,60 @@ try {
         </div>
     </div>
 
+    <div id="editModuleModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Edit Module Settings</h3>
+                <button type="button" class="btn-close" onclick="closeEditModal()"><i class="fas fa-times"></i></button>
+            </div>
+            <form method="POST">
+                <input type="hidden" name="edit_module_id" id="editModuleId">
+                <div class="form-group">
+                    <label>Module Code <span style="color:red;">*</span></label>
+                    <input type="text" name="edit_module_code" id="editModuleCode" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Module Full Name <span style="color:red;">*</span></label>
+                    <input type="text" name="edit_module_name" id="editModuleName" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Standard Exam Duration (Minutes) <span style="color:red;">*</span></label>
+                    <input type="number" name="edit_duration_minutes" id="editDuration" class="form-control" required min="10">
+                </div>
+                <div class="form-group">
+                    <label>Total Marks <span style="color:red;">*</span></label>
+                    <input type="number" name="edit_total_marks" id="editMarks" class="form-control" required min="1">
+                </div>
+                <div class="form-group">
+                    <label>Total Chapters <span style="color:red;">*</span></label>
+                    <input type="number" name="edit_chapter_count" id="editChapters" class="form-control" required min="1" max="50">
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn-back-cat" onclick="closeEditModal()">Cancel</button>
+                    <button type="submit" name="edit_module" class="btn-add" style="background: var(--warning); border:none;"><i class="fas fa-save"></i> Update Module</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
         const isFiltered = <?php echo $is_filtered ? 'true' : 'false'; ?>;
 
         function openModal() { document.getElementById('moduleModal').style.display = 'flex'; }
         function closeModal() { document.getElementById('moduleModal').style.display = 'none'; }
+
+        // 🟢 NEW: Edit Modal Logic
+        function openEditModal(id, code, name, duration, marks, chapters) {
+            document.getElementById('editModuleId').value = id;
+            document.getElementById('editModuleCode').value = code;
+            document.getElementById('editModuleName').value = name;
+            document.getElementById('editDuration').value = duration;
+            document.getElementById('editMarks').value = marks;
+            document.getElementById('editChapters').value = chapters;
+            document.getElementById('editModuleModal').style.display = 'flex';
+        }
+        function closeEditModal() { document.getElementById('editModuleModal').style.display = 'none'; }
 
         function openCategory(categoryKey) {
             document.getElementById('categoryGrid').style.display = 'none';
@@ -851,7 +941,6 @@ try {
             }
         }
 
-        // 🟢 NEW: Toggle Individual Chapters
         function toggleChapter(chapterId, headerElement) {
             const content = document.getElementById(chapterId);
             const arrow = headerElement.querySelector('.fa-angle-down');
@@ -892,7 +981,6 @@ try {
                         if (text.includes(input)) {
                             row.style.display = '';
                             hasVisibleRow = true;
-                            // Automatically open the chapter containing the search result
                             const chapterContent = row.closest('.chapter-content');
                             if(chapterContent) {
                                 chapterContent.style.display = 'block';

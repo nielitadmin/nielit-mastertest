@@ -1,5 +1,5 @@
 <?php
-session_name('NIELIT_COORD_SESSION'); // Changed Session Name
+session_name('NIELIT_COORD_SESSION'); 
 session_start();
 
 // Check if user is logged in and is Coordinator
@@ -8,22 +8,19 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 'coordinator') {
     exit();
 }
 
-// ============================================================================
-// Import centralized database connection
-// ============================================================================
 require_once __DIR__ . '/../../config/database.php';
 
 $message = '';
 $error = '';
 
 try {
-
     // --- 🆕 Add New Module (Category) ---
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_module'])) {
         $mod_code = strtoupper(trim($_POST['module_code']));
         $mod_name = trim($_POST['module_name']);
         $mod_duration = (int)$_POST['duration_minutes'];
-        $mod_marks = (int)$_POST['total_marks']; // 🟢 FIX: Added total marks parameter
+        $mod_marks = (int)$_POST['total_marks']; 
+        $mod_chapters = (int)$_POST['chapter_count']; // 🟢 NEW: Capture Chapter Count
         
         if (!empty($mod_code) && !empty($mod_name)) {
             try {
@@ -33,9 +30,9 @@ try {
                 if ($check->fetch()) {
                     $error = "A module with the code '$mod_code' already exists.";
                 } else {
-                    // 🟢 FIX: Added total_marks to INSERT statement
-                    $stmt = $pdo->prepare("INSERT INTO exam_categories (category_code, category_name, duration_minutes, total_marks) VALUES (?, ?, ?, ?)");
-                    $stmt->execute([$mod_code, $mod_name, $mod_duration, $mod_marks]);
+                    // 🟢 NEW: Insert chapter_count into the database
+                    $stmt = $pdo->prepare("INSERT INTO exam_categories (category_code, category_name, duration_minutes, total_marks, chapter_count) VALUES (?, ?, ?, ?, ?)");
+                    $stmt->execute([$mod_code, $mod_name, $mod_duration, $mod_marks, $mod_chapters]);
                     header("Location: manage-questions.php?msg=module_created");
                     exit();
                 }
@@ -56,10 +53,8 @@ try {
                 $stmt = $pdo->prepare("DELETE FROM questions WHERE category_id IS NULL");
                 $stmt->execute();
             } else {
-                // Delete questions first
                 $stmt = $pdo->prepare("DELETE FROM questions WHERE category_id = ?");
                 $stmt->execute([$cat_id]);
-                // Delete the category itself
                 $stmtCat = $pdo->prepare("DELETE FROM exam_categories WHERE id = ?");
                 $stmtCat->execute([$cat_id]);
             }
@@ -102,7 +97,7 @@ try {
         if ($_GET['msg'] === 'activated') $message = "Question activated successfully.";
         if ($_GET['msg'] === 'module_deleted') $message = "✅ Success: Module and all its questions were permanently deleted.";
         if ($_GET['msg'] === 'module_deactivated') $message = "⚠️ Note: Module could not be hard-deleted because it is linked to past scorecards. Questions have been deactivated.";
-        if ($_GET['msg'] === 'module_created') $message = "✅ Success: New module created successfully!";
+        if ($_GET['msg'] === 'module_created') $message = "✅ Success: New module with chapters created successfully!";
     }
 
     // Get filter parameters
@@ -146,7 +141,8 @@ try {
     ];
 
     // Pre-populate all categories so empty folders are visible
-    $categories = $pdo->query("SELECT id, category_code, category_name FROM exam_categories ORDER BY category_code ASC")->fetchAll(PDO::FETCH_ASSOC);
+    // 🟢 NEW: Fetch chapter_count
+    $categories = $pdo->query("SELECT id, category_code, category_name, chapter_count FROM exam_categories ORDER BY category_code ASC")->fetchAll(PDO::FETCH_ASSOC);
     
     foreach ($categories as $cat) {
         $code = strtoupper($cat['category_code'] ?? '');
@@ -166,11 +162,13 @@ try {
         $module_name = $cat['category_code'] . ': ' . $cat['category_name'];
         $course_groups[$parent_key]['modules'][$module_name] = [
             'cat_id' => $cat['id'],
-            'questions' => []
+            'chapter_count' => $cat['chapter_count'] ?? 1, // 🟢 Save chapter count
+            'chapters' => [],
+            'unassigned' => [] // For questions that don't have a chapter_number assigned yet
         ];
     }
 
-    // Now populate the questions into their respective folders
+    // Now populate the questions into their respective folders and CHAPTERS
     foreach ($all_questions as $q) {
         $code = strtoupper($q['category_code'] ?? '');
         $name = strtoupper($q['category_name'] ?? '');
@@ -191,11 +189,20 @@ try {
         if (!isset($course_groups[$parent_key]['modules'][$module_name])) {
             $course_groups[$parent_key]['modules'][$module_name] = [
                 'cat_id' => $q['category_id'],
-                'questions' => []
+                'chapter_count' => 1,
+                'chapters' => [],
+                'unassigned' => []
             ];
         }
         
-        $course_groups[$parent_key]['modules'][$module_name]['questions'][] = $q;
+        // 🟢 NEW: Sort question into the correct chapter array
+        $chap_num = $q['chapter_number'] ?? null;
+        if ($chap_num) {
+            $course_groups[$parent_key]['modules'][$module_name]['chapters'][$chap_num][] = $q;
+        } else {
+            $course_groups[$parent_key]['modules'][$module_name]['unassigned'][] = $q;
+        }
+
         $course_groups[$parent_key]['q_count']++;
     }
     
@@ -213,12 +220,10 @@ try {
         FROM questions
     ")->fetch(PDO::FETCH_ASSOC);
 
-    // Check if a filter is active
     $is_filtered = (!empty($category_filter) || !empty($difficulty_filter));
 
 } catch (PDOException $e) {
-    $error = "System Database Error. Please contact IT support.";
-    error_log("Manage Questions DB error: " . $e->getMessage());
+    $error = "System Database Error. Did you remember to run the SQL commands to add chapter_count? Error: " . $e->getMessage();
 }
 ?>
 
@@ -228,12 +233,10 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Question Bank - Coordinator Portal</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
-            /* COORDINATOR PURPLE THEME */
             --primary: #7C3AED;        --primary-light: #8B5CF6;  --primary-bg: #EDE9FE;     
             --secondary: #0F172A;
             --success: #059669;        --success-bg: #D1FAE5;
@@ -251,17 +254,11 @@ try {
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; }
         body { background-color: var(--bg-body); color: var(--text-dark); min-height: 100vh; padding-bottom: 60px; position: relative; }
 
-        /* --- 3D MOVING BACKGROUND --- */
         .ambient-bg { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -1; overflow: hidden; pointer-events: none; background: linear-gradient(180deg, #F8FAFC 0%, #E2E8F0 100%); perspective: 1000px; }
-        .orb { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.6; animation: float-orb 20s infinite alternate cubic-bezier(0.45, 0.05, 0.55, 0.95); }
-        .orb-1 { width: 600px; height: 600px; background: linear-gradient(135deg, #DDD6FE, #A78BFA); top: -10%; left: -10%; }
-        .orb-2 { width: 500px; height: 500px; background: linear-gradient(135deg, #C4B5FD, #8B5CF6); bottom: -20%; right: -5%; animation-delay: -5s; }
-        @keyframes float-orb { 0% { transform: translate(0, 0) scale(1); } 100% { transform: translate(100px, 50px) scale(1.1); } }
         
-        /* --- STICKY GLASSMORPHISM NAVBAR --- */
         .navbar-wrapper {
             position: sticky; top: 0; z-index: 1000;
-            background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(16px);
             border-bottom: 1px solid rgba(226, 232, 240, 0.8); box-shadow: 0 4px 30px -10px rgba(0,0,0,0.05);
         }
         .top-nav { padding: 15px 40px; display: flex; justify-content: space-between; align-items: center; max-width: 1600px; margin: 0 auto; }
@@ -274,11 +271,9 @@ try {
         .user-info { font-size: 14px; font-weight: 600; color: var(--text-dark); display: flex; align-items: center; gap: 10px; }
         .user-avatar { width: 32px; height: 32px; background: var(--primary); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; }
 
-        /* --- MAIN CONTAINER --- */
         .container { max-width: 1440px; margin: 30px auto; padding: 0 40px; position: relative; z-index: 10; animation: fadeUp 0.5s ease-out; }
         @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* --- HEADER & BUTTONS --- */
         .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; flex-wrap: wrap; gap: 15px; }
         .page-header h1 { font-size: 28px; font-weight: 800; color: var(--text-dark); letter-spacing: -0.5px; display: flex; align-items: center; gap: 10px; }
         .header-actions { display: flex; gap: 12px; flex-wrap: wrap; }
@@ -292,7 +287,6 @@ try {
         .alert-success { background: var(--success-bg); color: var(--success); border-color: #A7F3D0; }
         .alert-error { background: var(--danger-bg); color: var(--danger); border-color: #FECACA; }
 
-        /* --- BENTO STATS --- */
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
         .stat-card { background: rgba(255,255,255,0.85); backdrop-filter: blur(10px); padding: 20px; border-radius: var(--radius-md); border: 1px solid var(--border); box-shadow: var(--shadow-sm); display: flex; align-items: center; gap: 15px; position: relative; overflow: hidden; transition: 0.3s; }
         .stat-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
@@ -313,7 +307,6 @@ try {
         .stat-info h3 { font-size: 24px; font-weight: 800; color: var(--text-dark); line-height: 1; margin-bottom: 5px; }
         .stat-info p { font-size: 13px; color: var(--text-muted); font-weight: 600; }
 
-        /* --- TOOLBAR --- */
         .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; background: rgba(255,255,255,0.9); padding: 15px 20px; border-radius: var(--radius-md); border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
         .filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
         .filter-select { padding: 10px 35px 10px 15px; border-radius: 10px; border: 1px solid var(--border); background-color: var(--bg-body); font-family: inherit; font-size: 13px; font-weight: 600; color: var(--text-dark); cursor: pointer; outline: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 15px center; transition: 0.3s; }
@@ -328,7 +321,6 @@ try {
         .search-box input { width: 100%; padding: 10px 15px 10px 40px; border-radius: 50px; border: 1px solid var(--border); background: var(--bg-body); font-family: 'Plus Jakarta Sans', sans-serif; font-size: 14px; transition: all 0.3s; outline: none; font-weight: 500; }
         .search-box input:focus { background: var(--white); border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-bg); }
 
-        /* --- CATEGORY CARDS GRID --- */
         .course-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; margin-bottom: 40px; }
         .course-card { background: rgba(255,255,255,0.9); backdrop-filter: blur(10px); border-radius: var(--radius-lg); border: 1px solid var(--border); padding: 30px 25px; text-align: center; cursor: pointer; box-shadow: var(--shadow-sm); transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); display: flex; flex-direction: column; align-items: center; gap: 15px; }
         .course-card:hover { transform: translateY(-8px); box-shadow: var(--shadow-lg); border-color: var(--primary-light); }
@@ -341,14 +333,12 @@ try {
         .course-card h3 { font-size: 18px; font-weight: 800; color: var(--text-dark); }
         .course-card p { font-size: 13px; font-weight: 600; color: var(--text-muted); background: var(--bg-body); padding: 6px 12px; border-radius: 50px; }
 
-        /* --- MODULE VIEW CONTROLS --- */
         #moduleView { display: none; }
         .view-header { display: flex; align-items: center; gap: 20px; margin-bottom: 25px; background: var(--surface); padding: 15px 25px; border-radius: var(--radius-md); border: 1px solid var(--border); }
         .btn-back-cat { background: var(--bg-body); border: 1px solid var(--border); border-radius: 8px; padding: 8px 16px; color: var(--text-dark); font-weight: 700; font-size: 13px; cursor: pointer; transition: 0.2s; }
         .btn-back-cat:hover { background: var(--primary-bg); color: var(--primary); border-color: var(--primary-light); }
         .view-header h2 { font-size: 20px; font-weight: 800; color: var(--primary); }
 
-        /* --- FOLDER ACCORDIONS --- */
         .folder-accordion { background: rgba(255,255,255,0.9); backdrop-filter: blur(10px); border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow-sm); margin-bottom: 20px; overflow: hidden; transition: 0.3s; }
         .folder-header { padding: 20px 25px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: 0.3s; background: transparent; }
         .folder-header:hover { background: var(--primary-bg); }
@@ -363,11 +353,20 @@ try {
         .btn-folder-delete { background: var(--danger-bg); color: var(--danger); border: 1px solid #FECACA; padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: 0.3s; }
         .btn-folder-delete:hover { background: var(--danger); color: white; box-shadow: 0 4px 10px rgba(220, 38, 38, 0.2); }
 
-        .folder-content { display: none; border-top: 1px solid var(--border); }
+        .folder-content { display: none; border-top: 1px solid var(--border); background: #F8FAFC; padding: 10px; }
         .folder-content.active { display: block; animation: slideDown 0.3s ease-out; }
         @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* --- MODERN TABLE --- */
+        /* 🟢 NEW: CHAPTER STYLES */
+        .chapter-box { background: white; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 15px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.02);}
+        .chapter-header { padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; background: #FFFFFF; cursor: pointer; transition: 0.2s;}
+        .chapter-header:hover { background: #F1F5F9; }
+        .chapter-title { font-size: 14px; font-weight: 800; color: var(--text-dark); display: flex; align-items: center; gap: 10px;}
+        .chapter-title i { color: var(--primary-light); }
+        .chapter-actions { display: flex; gap: 10px; align-items: center;}
+        .chapter-count-badge { font-size: 11px; background: var(--bg-body); padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); color: var(--text-muted); font-weight: 700;}
+        .chapter-content { display: none; border-top: 1px solid var(--border); }
+
         .table-responsive { overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; min-width: 900px; }
         th { background: #F8FAFC; color: var(--text-muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 15px 20px; text-align: left; border-bottom: 2px solid var(--border); }
@@ -379,7 +378,6 @@ try {
         .q-meta { font-size: 12px; color: var(--text-muted); margin-top: 6px; display: flex; gap: 15px; }
         .q-meta i { color: var(--primary); margin-right: 4px; }
 
-        /* Badges */
         .badge { padding: 4px 10px; border-radius: 50px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: inline-block; white-space: nowrap;}
         .b-easy { background: #D1FAE5; color: #059669; }
         .b-medium { background: #FEF3C7; color: #D97706; }
@@ -389,7 +387,6 @@ try {
         .b-active { background: var(--success-bg); color: var(--success); }
         .b-inactive { background: var(--danger-bg); color: var(--danger); }
 
-        /* Action Buttons */
         .actions { display: flex; gap: 8px; justify-content: flex-end;}
         .btn-action { width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; transition: all 0.2s; font-size: 14px; cursor: pointer; }
         .btn-edit { background: var(--warning-bg); color: var(--warning); }
@@ -399,7 +396,6 @@ try {
         .btn-activate { background: var(--success-bg); color: var(--success); }
         .btn-activate:hover { background: var(--success); color: white; transform: translateY(-2px); }
 
-        /* --- MODAL STYLES --- */
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); z-index: 2000; align-items: center; justify-content: center; }
         .modal { background: white; padding: 30px; border-radius: var(--radius-lg); width: 100%; max-width: 450px; box-shadow: var(--shadow-lg); animation: slideUpFade 0.3s ease-out; }
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
@@ -431,9 +427,6 @@ try {
     <div class="ambient-bg">
         <div class="orb orb-1"></div>
         <div class="orb orb-2"></div>
-        <div class="shape cube"></div>
-        <div class="shape ring"></div>
-        <div class="shape pyramid"></div>
     </div>
 
     <div class="navbar-wrapper">
@@ -584,7 +577,7 @@ try {
                             $folder_index++;
                             $folder_id = "folder-" . $folder_index;
                             $cat_id = $folder_data['cat_id'] ?? 'null';
-                            $questions = $folder_data['questions'];
+                            $total_chapters = $folder_data['chapter_count'];
                     ?>
                         <div class="folder-accordion" data-category="<?php echo htmlspecialchars($group_key); ?>" data-folder="<?php echo $folder_id; ?>" style="<?php echo $is_filtered ? '' : 'display:none;'; ?>">
                             
@@ -592,13 +585,13 @@ try {
                                 <div class="folder-title-area">
                                     <i class="fas fa-folder folder-icon" id="icon-<?php echo $folder_id; ?>"></i>
                                     <span class="folder-title"><?php echo htmlspecialchars($folder_name); ?></span>
-                                    <span class="folder-count"><?php echo count($questions); ?> Questions</span>
+                                    <span class="folder-count"><?php echo $total_chapters; ?> Chapters</span>
                                 </div>
                                 
                                 <div style="display: flex; align-items: center; gap: 15px;">
                                     <?php if ($cat_id !== 'null'): ?>
                                         <a href="add-question.php?category_id=<?php echo $cat_id; ?>" class="btn-folder-add" onclick="event.stopPropagation();">
-                                            <i class="fas fa-plus"></i> Add Question Here
+                                            <i class="fas fa-plus"></i> Add Question
                                         </a>
                                     <?php endif; ?>
                                     
@@ -611,72 +604,159 @@ try {
                             </div>
 
                             <div class="folder-content" id="<?php echo $folder_id; ?>">
-                                <?php if (empty($questions)): ?>
-                                    <div style="padding: 30px; text-align: center; color: var(--text-muted);">
-                                        <p>This module is currently empty. Click the 'Add Question Here' button above to add questions.</p>
+                                
+                                <?php 
+                                // 🟢 LOOP THROUGH ALL DECLARED CHAPTERS (1 to N)
+                                for ($i = 1; $i <= $total_chapters; $i++): 
+                                    $chap_id = $folder_id . "-chap-" . $i;
+                                    $chap_questions = $folder_data['chapters'][$i] ?? [];
+                                ?>
+                                    <div class="chapter-box">
+                                        <div class="chapter-header" onclick="toggleChapter('<?php echo $chap_id; ?>', this)">
+                                            <div class="chapter-title">
+                                                <i class="fas fa-bookmark"></i> Chapter <?php echo $i; ?>
+                                            </div>
+                                            <div class="chapter-actions">
+                                                <span class="chapter-count-badge"><?php echo count($chap_questions); ?> Qs</span>
+                                                <i class="fas fa-angle-down" style="color: var(--text-muted); font-size: 12px; transition: 0.2s;"></i>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="chapter-content" id="<?php echo $chap_id; ?>">
+                                            <?php if (empty($chap_questions)): ?>
+                                                <div style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 13px;">
+                                                    No questions assigned to Chapter <?php echo $i; ?> yet.
+                                                </div>
+                                            <?php else: ?>
+                                                <div class="table-responsive">
+                                                    <table>
+                                                        <thead>
+                                                            <tr>
+                                                                <th style="width: 60px;">ID</th>
+                                                                <th>Question Preview</th>
+                                                                <th>Type & Difficulty</th>
+                                                                <th>Status</th>
+                                                                <th style="text-align: right;">Actions</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            <?php foreach ($chap_questions as $q): ?>
+                                                            <tr class="q-row">
+                                                                <td style="color: var(--text-muted); font-weight: 700;">#<?php echo $q['id']; ?></td>
+                                                                <td>
+                                                                    <div class="q-text" title="<?php echo htmlspecialchars($q['question_text']); ?>">
+                                                                        <?php echo htmlspecialchars($q['question_text']); ?>
+                                                                    </div>
+                                                                    <div class="q-meta">
+                                                                        <span><i class="fas fa-list-ol"></i> <?php echo $q['option_count']; ?> Options</span>
+                                                                        <span><i class="fas fa-star"></i> <?php echo $q['marks']; ?> Mark(s)</span>
+                                                                    </div>
+                                                                </td>
+                                                                <td>
+                                                                    <div style="display:flex; flex-direction:column; gap:5px; align-items:flex-start;">
+                                                                        <span class="badge <?php echo $q['question_type'] == 'mcq' ? 'b-mcq' : 'b-tf'; ?>">
+                                                                            <?php echo $q['question_type'] == 'mcq' ? 'MCQ' : 'True/False'; ?>
+                                                                        </span>
+                                                                        <span class="badge b-<?php echo $q['difficulty_level']; ?>">
+                                                                            <?php echo ucfirst($q['difficulty_level']); ?>
+                                                                        </span>
+                                                                    </div>
+                                                                </td>
+                                                                <td>
+                                                                    <span class="badge b-<?php echo $q['is_active'] ? 'active' : 'inactive'; ?>">
+                                                                        <?php echo $q['is_active'] ? 'Active' : 'Disabled'; ?>
+                                                                    </span>
+                                                                </td>
+                                                                <td>
+                                                                    <div class="actions">
+                                                                        <a href="edit-question.php?id=<?php echo $q['id']; ?>" class="btn-action btn-edit" title="Edit Question">
+                                                                            <i class="fas fa-pen"></i>
+                                                                        </a>
+                                                                        <?php if ($q['is_active']): ?>
+                                                                            <a href="?delete=<?php echo $q['id']; ?>" class="btn-action btn-deactivate" onclick="return confirm('Deactivate this question?')" title="Deactivate">
+                                                                                <i class="fas fa-power-off"></i>
+                                                                            </a>
+                                                                        <?php else: ?>
+                                                                            <a href="?activate=<?php echo $q['id']; ?>" class="btn-action btn-activate" onclick="return confirm('Reactivate this question?')" title="Activate">
+                                                                                <i class="fas fa-check"></i>
+                                                                            </a>
+                                                                        <?php endif; ?>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                            <?php endforeach; ?>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            <?php endif; ?>
+                                        </div>
                                     </div>
-                                <?php else: ?>
-                                    <div class="table-responsive">
-                                        <table>
-                                            <thead>
-                                                <tr>
-                                                    <th style="width: 60px;">ID</th>
-                                                    <th>Question Preview</th>
-                                                    <th>Type & Difficulty</th>
-                                                    <th>Status</th>
-                                                    <th style="text-align: right;">Actions</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <?php foreach ($questions as $q): ?>
-                                                <tr class="q-row">
-                                                    <td style="color: var(--text-muted); font-weight: 700;">#<?php echo $q['id']; ?></td>
-                                                    <td>
-                                                        <div class="q-text" title="<?php echo htmlspecialchars($q['question_text']); ?>">
-                                                            <?php echo htmlspecialchars($q['question_text']); ?>
-                                                        </div>
-                                                        <div class="q-meta">
-                                                            <span><i class="fas fa-list-ol"></i> <?php echo $q['option_count']; ?> Options</span>
-                                                            <span><i class="fas fa-star"></i> <?php echo $q['marks']; ?> Mark(s)</span>
-                                                        </div>
-                                                    </td>
-                                                    <td>
-                                                        <div style="display:flex; flex-direction:column; gap:5px; align-items:flex-start;">
-                                                            <span class="badge <?php echo $q['question_type'] == 'mcq' ? 'b-mcq' : 'b-tf'; ?>">
-                                                                <?php echo $q['question_type'] == 'mcq' ? 'MCQ' : 'True/False'; ?>
-                                                            </span>
-                                                            <span class="badge b-<?php echo $q['difficulty_level']; ?>">
-                                                                <?php echo ucfirst($q['difficulty_level']); ?>
-                                                            </span>
-                                                        </div>
-                                                    </td>
-                                                    <td>
-                                                        <span class="badge b-<?php echo $q['is_active'] ? 'active' : 'inactive'; ?>">
-                                                            <?php echo $q['is_active'] ? 'Active' : 'Disabled'; ?>
-                                                        </span>
-                                                    </td>
-                                                    <td>
-                                                        <div class="actions">
-                                                            <a href="edit-question.php?id=<?php echo $q['id']; ?>" class="btn-action btn-edit" title="Edit Question">
-                                                                <i class="fas fa-pen"></i>
-                                                            </a>
-                                                            <?php if ($q['is_active']): ?>
-                                                                <a href="?delete=<?php echo $q['id']; ?>" class="btn-action btn-deactivate" onclick="return confirm('Are you sure you want to deactivate this question?')" title="Deactivate">
-                                                                    <i class="fas fa-power-off"></i>
-                                                                </a>
-                                                            <?php else: ?>
-                                                                <a href="?activate=<?php echo $q['id']; ?>" class="btn-action btn-activate" onclick="return confirm('Reactivate this question?')" title="Activate">
-                                                                    <i class="fas fa-check"></i>
-                                                                </a>
-                                                            <?php endif; ?>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                                <?php endforeach; ?>
-                                            </tbody>
-                                        </table>
+                                <?php endfor; ?>
+                                
+                                <?php if (!empty($folder_data['unassigned'])): ?>
+                                    <div class="chapter-box" style="border-color: #E2E8F0;">
+                                        <div class="chapter-header" onclick="toggleChapter('<?php echo $folder_id; ?>-chap-unassigned', this)" style="background: #F8FAFC;">
+                                            <div class="chapter-title" style="color: var(--text-muted);">
+                                                <i class="fas fa-layer-group"></i> General Questions (Unassigned)
+                                            </div>
+                                            <div class="chapter-actions">
+                                                <span class="chapter-count-badge"><?php echo count($folder_data['unassigned']); ?> Qs</span>
+                                                <i class="fas fa-angle-down" style="color: var(--text-muted); font-size: 12px;"></i>
+                                            </div>
+                                        </div>
+                                        <div class="chapter-content" id="<?php echo $folder_id; ?>-chap-unassigned">
+                                            <div class="table-responsive">
+                                                <table>
+                                                    <thead>
+                                                        <tr>
+                                                            <th style="width: 60px;">ID</th>
+                                                            <th>Question Preview</th>
+                                                            <th>Type & Difficulty</th>
+                                                            <th>Status</th>
+                                                            <th style="text-align: right;">Actions</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <?php foreach ($folder_data['unassigned'] as $q): ?>
+                                                        <tr class="q-row">
+                                                            <td style="color: var(--text-muted); font-weight: 700;">#<?php echo $q['id']; ?></td>
+                                                            <td>
+                                                                <div class="q-text" title="<?php echo htmlspecialchars($q['question_text']); ?>">
+                                                                    <?php echo htmlspecialchars($q['question_text']); ?>
+                                                                </div>
+                                                                <div class="q-meta">
+                                                                    <span><i class="fas fa-list-ol"></i> <?php echo $q['option_count']; ?> Options</span>
+                                                                    <span><i class="fas fa-star"></i> <?php echo $q['marks']; ?> Mark(s)</span>
+                                                                </div>
+                                                            </td>
+                                                            <td>
+                                                                <div style="display:flex; flex-direction:column; gap:5px; align-items:flex-start;">
+                                                                    <span class="badge <?php echo $q['question_type'] == 'mcq' ? 'b-mcq' : 'b-tf'; ?>"><?php echo $q['question_type'] == 'mcq' ? 'MCQ' : 'True/False'; ?></span>
+                                                                    <span class="badge b-<?php echo $q['difficulty_level']; ?>"><?php echo ucfirst($q['difficulty_level']); ?></span>
+                                                                </div>
+                                                            </td>
+                                                            <td>
+                                                                <span class="badge b-<?php echo $q['is_active'] ? 'active' : 'inactive'; ?>"><?php echo $q['is_active'] ? 'Active' : 'Disabled'; ?></span>
+                                                            </td>
+                                                            <td>
+                                                                <div class="actions">
+                                                                    <a href="edit-question.php?id=<?php echo $q['id']; ?>" class="btn-action btn-edit" title="Edit Question"><i class="fas fa-pen"></i></a>
+                                                                    <?php if ($q['is_active']): ?>
+                                                                        <a href="?delete=<?php echo $q['id']; ?>" class="btn-action btn-deactivate" onclick="return confirm('Deactivate this question?')" title="Deactivate"><i class="fas fa-power-off"></i></a>
+                                                                    <?php else: ?>
+                                                                        <a href="?activate=<?php echo $q['id']; ?>" class="btn-action btn-activate" onclick="return confirm('Reactivate this question?')" title="Activate"><i class="fas fa-check"></i></a>
+                                                                    <?php endif; ?>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                        <?php endforeach; ?>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
                                     </div>
                                 <?php endif; ?>
+
                             </div>
                         </div>
                     <?php endforeach; endforeach; ?>
@@ -704,10 +784,13 @@ try {
                     <label>Standard Exam Duration (Minutes) <span style="color:red;">*</span></label>
                     <input type="number" name="duration_minutes" class="form-control" required value="120" min="10">
                 </div>
-                
                 <div class="form-group">
                     <label>Total Marks <span style="color:red;">*</span></label>
                     <input type="number" name="total_marks" class="form-control" required value="100" min="1">
+                </div>
+                <div class="form-group">
+                    <label>Total Chapters in Module <span style="color:red;">*</span></label>
+                    <input type="number" name="chapter_count" class="form-control" required value="1" min="1" max="50">
                 </div>
 
                 <div class="modal-actions">
@@ -721,15 +804,9 @@ try {
     <script>
         const isFiltered = <?php echo $is_filtered ? 'true' : 'false'; ?>;
 
-        // Modal Functions
-        function openModal() {
-            document.getElementById('moduleModal').style.display = 'flex';
-        }
-        function closeModal() {
-            document.getElementById('moduleModal').style.display = 'none';
-        }
+        function openModal() { document.getElementById('moduleModal').style.display = 'flex'; }
+        function closeModal() { document.getElementById('moduleModal').style.display = 'none'; }
 
-        // UI Transition Functions
         function openCategory(categoryKey) {
             document.getElementById('categoryGrid').style.display = 'none';
             document.getElementById('moduleView').style.display = 'block';
@@ -761,7 +838,6 @@ try {
             searchTable(); 
         }
 
-        // Toggle Accordion Folders
         function toggleFolder(folderId) {
             const content = document.getElementById(folderId);
             const icon = document.getElementById('icon-' + folderId);
@@ -775,7 +851,22 @@ try {
             }
         }
 
-        // Global Search across all folders
+        // 🟢 NEW: Toggle Individual Chapters
+        function toggleChapter(chapterId, headerElement) {
+            const content = document.getElementById(chapterId);
+            const arrow = headerElement.querySelector('.fa-angle-down');
+            
+            if (content.style.display === 'block') {
+                content.style.display = 'none';
+                headerElement.style.background = '#FFFFFF';
+                if(arrow) arrow.style.transform = 'rotate(0deg)';
+            } else {
+                content.style.display = 'block';
+                headerElement.style.background = '#F8FAFC';
+                if(arrow) arrow.style.transform = 'rotate(180deg)';
+            }
+        }
+
         function searchTable() {
             const input = document.getElementById('searchInput').value.toLowerCase();
             const accordions = document.querySelectorAll('.folder-accordion');
@@ -801,6 +892,13 @@ try {
                         if (text.includes(input)) {
                             row.style.display = '';
                             hasVisibleRow = true;
+                            // Automatically open the chapter containing the search result
+                            const chapterContent = row.closest('.chapter-content');
+                            if(chapterContent) {
+                                chapterContent.style.display = 'block';
+                                const arrow = chapterContent.previousElementSibling.querySelector('.fa-angle-down');
+                                if(arrow) arrow.style.transform = 'rotate(180deg)';
+                            }
                         } else {
                             row.style.display = 'none';
                         }

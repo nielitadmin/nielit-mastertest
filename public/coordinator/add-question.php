@@ -18,8 +18,8 @@ $error = '';
 $success = '';
 
 try {
-    // Fetch all categories from DB
-    $categories = $pdo->query("SELECT id, category_code, category_name FROM exam_categories ORDER BY category_code ASC")->fetchAll(PDO::FETCH_ASSOC);
+    // 🟢 NEW: Fetch chapter_count alongside other category details
+    $categories = $pdo->query("SELECT id, category_code, category_name, chapter_count FROM exam_categories ORDER BY category_code ASC")->fetchAll(PDO::FETCH_ASSOC);
 
     // --- SMART CATEGORIZATION ENGINE ---
     $course_groups = [
@@ -52,6 +52,7 @@ try {
 
     if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $category_id = $_POST['category_id'];
+        $chapter_number = !empty($_POST['chapter_number']) ? $_POST['chapter_number'] : null; // 🟢 Capture Chapter
         $question_text = trim($_POST['question_text']);
         $question_type = $_POST['question_type'];
         $difficulty_level = $_POST['difficulty_level'];
@@ -87,17 +88,16 @@ try {
         if (empty($errors)) {
             $pdo->beginTransaction();
             
-            // 🟢 FIX 1: MySQL uses lastInsertId() instead of RETURNING id
+            // 🟢 UPDATE: Insert chapter_number into the database
             $stmt = $pdo->prepare("
-                INSERT INTO questions (category_id, question_text, question_type, difficulty_level, marks, explanation, created_by, created_at, is_active)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), 1)
+                INSERT INTO questions (category_id, chapter_number, question_text, question_type, difficulty_level, marks, explanation, created_by, created_at, is_active)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)
             ");
-            $stmt->execute([$category_id, $question_text, $question_type, $difficulty_level, $marks, $explanation, $_SESSION['user_id']]);
+            $stmt->execute([$category_id, $chapter_number, $question_text, $question_type, $difficulty_level, $marks, $explanation, $_SESSION['user_id']]);
             
             // Grab the newly created question ID
             $question_id = $pdo->lastInsertId();
             
-            // 🟢 FIX 2: Removed PostgreSQL ::boolean cast. MySQL uses 1 and 0.
             if ($question_type == 'mcq' && isset($_POST['options'])) {
                 $opt_stmt = $pdo->prepare("
                     INSERT INTO question_options (question_id, option_text, is_correct, option_order)
@@ -107,7 +107,6 @@ try {
                 $order = 1;
                 foreach ($_POST['options'] as $option) {
                     if (!empty(trim($option['text'] ?? ''))) {
-                        // Use 1 for true, 0 for false in MySQL
                         $is_correct = (isset($option['is_correct']) && $option['is_correct'] === 'on') ? 1 : 0;
                         $opt_stmt->execute([$question_id, trim($option['text']), $is_correct, $order]);
                         $order++;
@@ -117,7 +116,6 @@ try {
                 $tf_correct = $_POST['tf_correct'] ?? 'true';
                 $opt_stmt = $pdo->prepare("INSERT INTO question_options (question_id, option_text, is_correct, option_order) VALUES (?, ?, ?, ?)");
                 
-                // Use 1 for true, 0 for false in MySQL
                 $opt_stmt->execute([$question_id, 'True', ($tf_correct == 'true') ? 1 : 0, 1]);
                 $opt_stmt->execute([$question_id, 'False', ($tf_correct == 'false') ? 1 : 0, 2]);
             }
@@ -136,9 +134,7 @@ try {
 
 } catch (PDOException $e) {
     if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
-    $error = "System Database Error. Please try again later.";
-    // Uncomment the line below to see the exact database error in your Hostinger logs if it ever fails again
-    // error_log("Add Question DB error: " . $e->getMessage());
+    $error = "System Database Error. Please try again later. " . $e->getMessage();
 }
 ?>
 
@@ -154,16 +150,16 @@ try {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
-            --primary: #1D4ED8;        --primary-light: #3B82F6;  --primary-bg: #DBEAFE;     
+            --primary: #7C3AED;        --primary-light: #8B5CF6;  --primary-bg: #EDE9FE;     
             --secondary: #0F172A;
             --success: #059669;        --success-bg: #D1FAE5;
             --danger: #DC2626;         --danger-bg: #FEE2E2;
             --text-dark: #0F172A;      --text-muted: #64748B;
-            --bg-body: #F4F7FB;        --surface: #FFFFFF;
+            --bg-body: #F8FAFC;        --surface: #FFFFFF;
             --border: #E2E8F0;
             --shadow-sm: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
             --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
-            --shadow-lg: 0 20px 40px -10px rgba(29, 78, 216, 0.1);
+            --shadow-lg: 0 20px 40px -10px rgba(124, 58, 237, 0.1);
             --radius-md: 12px;         --radius-lg: 20px;
         }
 
@@ -178,15 +174,9 @@ try {
         /* --- 3D MOVING BACKGROUND --- */
         .ambient-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; z-index: -1; overflow: hidden; pointer-events: none; background: linear-gradient(180deg, #F8FAFC 0%, #E2E8F0 100%); perspective: 1000px; }
         .orb { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.6; animation: float-orb 20s infinite alternate cubic-bezier(0.45, 0.05, 0.55, 0.95); }
-        .orb-1 { width: 600px; height: 600px; background: linear-gradient(135deg, #BAE6FD, #38BDF8); top: -10%; left: -10%; }
-        .orb-2 { width: 500px; height: 500px; background: linear-gradient(135deg, #7DD3FC, #0284C7); bottom: -20%; right: -5%; animation-delay: -5s; }
-        .shape { position: absolute; background: linear-gradient(135deg, rgba(255,255,255,0.8), rgba(59,130,246,0.05)); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.9); box-shadow: 0 15px 35px rgba(29,78,216,0.08), inset 0 0 20px rgba(255,255,255,0.5); animation: float-3d 20s infinite linear; }
-        .cube { width: 120px; height: 120px; border-radius: 24px; top: 15%; left: 5%; animation-duration: 25s; }
-        .ring { width: 200px; height: 200px; border-radius: 50%; border: 35px solid rgba(255,255,255,0.4); top: 50%; right: 5%; animation-duration: 30s; animation-direction: reverse; background: transparent; }
-        .pyramid { width: 80px; height: 80px; border-radius: 16px; bottom: 15%; left: 20%; animation-duration: 18s; }
-
+        .orb-1 { width: 600px; height: 600px; background: linear-gradient(135deg, #DDD6FE, #A78BFA); top: -10%; left: -10%; }
+        .orb-2 { width: 500px; height: 500px; background: linear-gradient(135deg, #C4B5FD, #8B5CF6); bottom: -20%; right: -5%; animation-delay: -5s; }
         @keyframes float-orb { 0% { transform: translate(0, 0) scale(1); } 100% { transform: translate(100px, 50px) scale(1.1); } }
-        @keyframes float-3d { 0% { transform: translateY(0) rotateX(0deg) rotateY(0deg) rotateZ(0deg); } 50% { transform: translateY(-40px) rotateX(180deg) rotateY(90deg) rotateZ(45deg); } 100% { transform: translateY(0) rotateX(360deg) rotateY(180deg) rotateZ(90deg); } }
 
         /* --- STICKY GLASSMORPHISM NAVBAR --- */
         .navbar-wrapper {
@@ -222,12 +212,13 @@ try {
         /* --- FORM CARD (BENTO STYLE) --- */
         .form-card { background: rgba(255,255,255,0.9); backdrop-filter: blur(16px); border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow-lg); padding: 40px; }
 
-        .info-box { background: var(--primary-bg); color: var(--primary); padding: 16px 20px; border-radius: var(--radius-md); margin-bottom: 30px; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 12px; border: 1px solid #BFDBFE; }
+        .info-box { background: var(--primary-bg); color: var(--primary); padding: 16px 20px; border-radius: var(--radius-md); margin-bottom: 30px; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 12px; border: 1px solid #C4B5FD; }
         .info-box i { font-size: 18px; }
 
         .section-title { font-size: 13px; font-weight: 800; color: var(--primary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid var(--border); display: flex; align-items: center; gap: 8px; }
 
-        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
+        /* 🟢 UPDATED GRID TO MATCH EDIT PAGE */
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 30px; }
         .form-group.full-width { grid-column: 1 / -1; }
 
         .form-group label { display: block; font-size: 13px; font-weight: 700; color: var(--text-dark); margin-bottom: 8px; }
@@ -281,8 +272,8 @@ try {
         .btn { padding: 14px 28px; border-radius: 12px; font-weight: 700; font-size: 14px; cursor: pointer; transition: all 0.3s; display: inline-flex; align-items: center; gap: 8px; border: none; font-family: inherit; }
         .btn-cancel { background: white; color: var(--text-dark); border: 1px solid var(--border); text-decoration: none; }
         .btn-cancel:hover { background: var(--bg-body); border-color: #94A3B8; }
-        .btn-submit { background: var(--primary); color: white; box-shadow: 0 4px 15px rgba(29, 78, 216, 0.2); }
-        .btn-submit:hover { background: #1e3a8a; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(29, 78, 216, 0.3); }
+        .btn-submit { background: var(--primary); color: white; box-shadow: 0 4px 15px rgba(124, 58, 237, 0.2); }
+        .btn-submit:hover { background: #6D28D9; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(124, 58, 237, 0.3); }
 
         @media (max-width: 768px) {
             .page-header { flex-direction: column; align-items: flex-start; }
@@ -300,9 +291,8 @@ try {
 <body>
 
     <div class="ambient-bg">
-        <div class="shape cube"></div>
-        <div class="shape ring"></div>
-        <div class="shape pyramid"></div>
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
     </div>
 
     <div class="navbar-wrapper">
@@ -311,7 +301,7 @@ try {
                 <a href="manage-questions.php" class="btn-back"><i class="fas fa-arrow-left"></i> Question Bank</a>
                 <div class="brand-text">
                     <h2>Content Creator</h2>
-                    <span class="hide-mobile">NIELIT Admin Console</span>
+                    <span class="hide-mobile">NIELIT Coordinator Portal</span>
                 </div>
             </div>
             <div class="nav-right">
@@ -376,10 +366,20 @@ try {
                 <div class="form-group">
                     <label>Specific Module *</label>
                     <div class="input-wrap">
-                        <select name="category_id" id="moduleId" class="form-control" required disabled>
+                        <select name="category_id" id="moduleId" class="form-control" required disabled onchange="updateChapters()">
                             <option value="">Select Course Category first...</option>
                         </select>
                         <i class="fas fa-book input-icon"></i>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Assign to Chapter (Optional)</label>
+                    <div class="input-wrap">
+                        <select name="chapter_number" id="chapterId" class="form-control" disabled>
+                            <option value="">General (No Chapter)</option>
+                        </select>
+                        <i class="fas fa-bookmark input-icon"></i>
                     </div>
                 </div>
 
@@ -406,7 +406,7 @@ try {
                     </div>
                 </div>
 
-                <div class="form-group full-width">
+                <div class="form-group">
                     <label>Allocated Marks *</label>
                     <div class="input-wrap">
                         <input type="number" name="marks" class="form-control" step="0.5" min="0.5" value="1" required style="padding-left: 42px;">
@@ -469,7 +469,6 @@ try {
         const categoryData = <?php echo json_encode($course_groups); ?>;
         let optionCount = 0;
 
-        // --- NEW: Handle Dynamic Two-Step Dropdown ---
         function updateModules() {
             const parentSelect = document.getElementById('parentCategory');
             const modSelect = document.getElementById('moduleId');
@@ -483,6 +482,8 @@ try {
                     const opt = document.createElement('option');
                     opt.value = mod.id;
                     opt.textContent = mod.category_code + ' - ' + mod.category_name;
+                    // 🟢 NEW: Pass chapter count as a data attribute to JS
+                    opt.dataset.chapters = mod.chapter_count || 1;
                     modSelect.appendChild(opt);
                 });
                 modSelect.disabled = false;
@@ -490,6 +491,32 @@ try {
             } else {
                 modSelect.disabled = true;
                 modSelect.style.backgroundColor = "#F1F5F9";
+            }
+            updateChapters(); // 🟢 Trigger chapter dropdown update
+        }
+
+        // 🟢 NEW: Read chapter count and populate dropdown
+        function updateChapters() {
+            const modSelect = document.getElementById('moduleId');
+            const chapSelect = document.getElementById('chapterId');
+            
+            chapSelect.innerHTML = '<option value="">General (No Chapter)</option>';
+            
+            if (modSelect.selectedIndex > 0) {
+                const selectedOption = modSelect.options[modSelect.selectedIndex];
+                const totalChapters = parseInt(selectedOption.dataset.chapters) || 1;
+                
+                for (let i = 1; i <= totalChapters; i++) {
+                    const opt = document.createElement('option');
+                    opt.value = i;
+                    opt.textContent = "Chapter " + i;
+                    chapSelect.appendChild(opt);
+                }
+                chapSelect.disabled = false;
+                chapSelect.style.backgroundColor = "var(--bg-body)";
+            } else {
+                chapSelect.disabled = true;
+                chapSelect.style.backgroundColor = "#F1F5F9";
             }
         }
 
@@ -586,15 +613,20 @@ try {
         window.onload = function() {
             toggleOptions();
             
-            // Check if we need to auto-restore selection after a failed form submission
+            // Auto-restore selection after a failed form submission
             const preselectedModuleId = "<?php echo isset($_POST['category_id']) ? $_POST['category_id'] : ''; ?>";
+            const preselectedChapterId = "<?php echo isset($_POST['chapter_number']) ? $_POST['chapter_number'] : ''; ?>";
+            
             if(preselectedModuleId) {
-                // Find parent category
                 for(const [catName, modules] of Object.entries(categoryData)) {
                     if(modules.some(m => m.id == preselectedModuleId)) {
                         document.getElementById('parentCategory').value = catName;
                         updateModules();
                         document.getElementById('moduleId').value = preselectedModuleId;
+                        updateChapters();
+                        if(preselectedChapterId) {
+                            document.getElementById('chapterId').value = preselectedChapterId;
+                        }
                         break;
                     }
                 }

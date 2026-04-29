@@ -1,29 +1,32 @@
 <?php
-session_name('NIELIT_ADMIN_SESSION');
+// 🟢 Switched to Coordinator Session
+session_name('NIELIT_COORD_SESSION');
 session_start();
 
-// Check if user is logged in and is admin
-if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 'admin') {
-    header("Location: admin-login.php");
+// Check if user is logged in and is coordinator
+if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 'coordinator') {
+    header("Location: coordinator-login.php");
     exit();
 }
 
 // ============================================================================
 // NEW ARCHITECTURE: Import centralized database connection
-// Path assumes this file is in: /public/admin/bulk-upload-questions.php
+// Path assumes this file is in: /public/coordinator/bulk-upload-questions.php
 // ============================================================================
 require_once __DIR__ . '/../../config/database.php';
 
-// Handle Template Download (UPDATED TO MODULE FORMAT)
+// Handle Template Download (🟢 UPDATED TO INCLUDE CHAPTER COLUMN)
 if (isset($_GET['download_template'])) {
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename=NIELIT_ModuleWise_Questions_Template.csv');
     $output = fopen('php://output', 'w');
-    // Header Row
-    fputcsv($output, ['ModuleCode', 'QuestionType(mcq/true_false)', 'Difficulty(easy/medium/hard)', 'Marks', 'QuestionText', 'Option1', 'Option2', 'Option3', 'Option4', 'CorrectOption(1-4 or True/False)', 'Explanation']);
-    // Sample Rows using O-Level Module Codes
-    fputcsv($output, ['M1-R5', 'mcq', 'medium', '1', 'What does CPU stand for?', 'Central Process Unit', 'Central Processing Unit', 'Computer Personal Unit', 'Central Processor Unit', '2', 'The CPU is the primary component of a computer.']);
-    fputcsv($output, ['M2-R5', 'true_false', 'easy', '1', 'HTML is a programming language.', '', '', '', '', 'False', 'HTML is a markup language, not a programming language.']);
+    
+    // Header Row (Now 12 Columns)
+    fputcsv($output, ['ModuleCode', 'ChapterNumber(Optional)', 'QuestionType(mcq/true_false)', 'Difficulty(easy/medium/hard)', 'Marks', 'QuestionText', 'Option1', 'Option2', 'Option3', 'Option4', 'CorrectOption(1-4 or True/False)', 'Explanation']);
+    
+    // Sample Rows
+    fputcsv($output, ['M1-R5', '1', 'mcq', 'medium', '1', 'What does CPU stand for?', 'Central Process Unit', 'Central Processing Unit', 'Computer Personal Unit', 'Central Processor Unit', '2', 'The CPU is the primary component of a computer.']);
+    fputcsv($output, ['M2-R5', '', 'true_false', 'easy', '1', 'HTML is a programming language.', '', '', '', '', 'False', 'HTML is a markup language, not a programming language.']);
     fclose($output);
     exit();
 }
@@ -33,11 +36,14 @@ $success = '';
 $import_details = [];
 
 try {
-    // Get categories to map ModuleCode (category_code) to Category ID
-    $catQuery = $pdo->query("SELECT id, category_code FROM exam_categories");
+    // 🟢 Get categories WITH chapter_count to validate uploaded chapters
+    $catQuery = $pdo->query("SELECT id, category_code, chapter_count FROM exam_categories");
     $categoryMap = [];
     while ($row = $catQuery->fetch(PDO::FETCH_ASSOC)) {
-        $categoryMap[strtoupper(trim($row['category_code']))] = $row['id'];
+        $categoryMap[strtoupper(trim($row['category_code']))] = [
+            'id' => $row['id'],
+            'chapters' => $row['chapter_count'] ?? 1
+        ];
     }
 
     if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['csv_file'])) {
@@ -57,7 +63,8 @@ try {
                 $rowNum = 1; // Start at 1 (excluding header)
                 $successCount = 0;
                 
-                $qStmt = $pdo->prepare("INSERT INTO questions (category_id, question_text, question_type, difficulty_level, marks, explanation, created_by, created_at, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), true)");
+                // 🟢 ADDED chapter_number to INSERT
+                $qStmt = $pdo->prepare("INSERT INTO questions (category_id, chapter_number, question_text, question_type, difficulty_level, marks, explanation, created_by, created_at, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)");
                 $oStmt = $pdo->prepare("INSERT INTO question_options (question_id, option_text, is_correct, option_order) VALUES (?, ?, ?, ?)");
 
                 while (($data = fgetcsv($handle, 2000, ",")) !== FALSE) {
@@ -66,25 +73,32 @@ try {
                     // Skip empty rows
                     if (empty(array_filter($data))) continue;
                     
-                    // Pad array to ensure all 11 columns exist even if empty
-                    $data = array_pad($data, 11, '');
+                    // 🟢 Pad array to 12 columns to account for the new Chapter column
+                    $data = array_pad($data, 12, '');
                     
                     $moduleCode = strtoupper(trim($data[0])); // E.g., M1-R5
-                    $qType = strtolower(trim($data[1]));
-                    $difficulty = strtolower(trim($data[2]));
-                    $marks = floatval($data[3]);
-                    $qText = trim($data[4]);
-                    $opt1 = trim($data[5]);
-                    $opt2 = trim($data[6]);
-                    $opt3 = trim($data[7]);
-                    $opt4 = trim($data[8]);
-                    $correctStr = trim($data[9]); // "1", "1,3", "True", "False"
-                    $explanation = trim($data[10]);
+                    $chapterNum = trim($data[1]) !== '' ? (int)trim($data[1]) : null; // 🟢 Read Chapter
+                    $qType = strtolower(trim($data[2]));
+                    $difficulty = strtolower(trim($data[3]));
+                    $marks = floatval($data[4]);
+                    $qText = trim($data[5]);
+                    $opt1 = trim($data[6]);
+                    $opt2 = trim($data[7]);
+                    $opt3 = trim($data[8]);
+                    $opt4 = trim($data[9]);
+                    $correctStr = trim($data[10]); 
+                    $explanation = trim($data[11]);
 
                     // Validation
                     if (!isset($categoryMap[$moduleCode])) {
                         throw new Exception("Row $rowNum: Module Code '$moduleCode' not found in system. Please ensure it matches exactly (e.g., M1-R5).");
                     }
+                    
+                    // 🟢 Validate Chapter Number against the Module's max chapters
+                    if ($chapterNum !== null && $chapterNum > $categoryMap[$moduleCode]['chapters']) {
+                        throw new Exception("Row $rowNum: Chapter number $chapterNum exceeds the total chapters (".$categoryMap[$moduleCode]['chapters'].") defined for module $moduleCode.");
+                    }
+
                     if (!in_array($qType, ['mcq', 'true_false'])) {
                         throw new Exception("Row $rowNum: Invalid Question Type '$qType'. Use 'mcq' or 'true_false'.");
                     }
@@ -93,7 +107,16 @@ try {
                     }
 
                     // Insert Question
-                    $qStmt->execute([$categoryMap[$moduleCode], $qText, $qType, $difficulty, $marks, $explanation, $_SESSION['user_id']]);
+                    $qStmt->execute([
+                        $categoryMap[$moduleCode]['id'], 
+                        $chapterNum, 
+                        $qText, 
+                        $qType, 
+                        $difficulty, 
+                        $marks, 
+                        $explanation, 
+                        $_SESSION['user_id']
+                    ]);
                     $qId = (int)$pdo->lastInsertId();
 
                     // Handle Options
@@ -128,7 +151,7 @@ try {
                 $pdo->commit();
                 
                 if ($successCount > 0) {
-                    $success = "Successfully imported $successCount questions into their respective modules!";
+                    $success = "Successfully imported $successCount questions into their respective modules and chapters!";
                 } else {
                     $error = "No valid data found in the uploaded file.";
                 }
@@ -152,17 +175,17 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bulk Upload Questions - NIELIT Admin</title>
+    <title>Bulk Upload Questions - NIELIT Coordinator</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
-            /* Professional Light Theme Colors */
-            --primary: #1D4ED8;        
-            --primary-light: #3B82F6;  
-            --primary-bg: #DBEAFE;     
+            /* 🟢 Switched to Coordinator Purple Theme */
+            --primary: #7C3AED;        
+            --primary-light: #8B5CF6;  
+            --primary-bg: #EDE9FE;     
             --secondary: #0F172A;
             --success: #059669;
             --success-bg: #D1FAE5;
@@ -171,12 +194,12 @@ try {
             --warning: #D97706;
             --text-dark: #0F172A;
             --text-muted: #64748B;
-            --bg-body: #F4F7FB;
+            --bg-body: #F8FAFC;
             --surface: #FFFFFF;
             --border: #E2E8F0;
             --shadow-sm: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
             --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
-            --shadow-lg: 0 20px 40px -10px rgba(29, 78, 216, 0.1);
+            --shadow-lg: 0 20px 40px -10px rgba(124, 58, 237, 0.1);
             --radius-md: 12px;
             --radius-lg: 20px;
         }
@@ -192,11 +215,11 @@ try {
             padding-bottom: 60px;
         }
 
-        /* --- 3D MOVING BACKGROUND (Sky Blue tones) --- */
+        /* --- 3D MOVING BACKGROUND --- */
         .ambient-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; z-index: -1; overflow: hidden; pointer-events: none; background: linear-gradient(180deg, #F8FAFC 0%, #E2E8F0 100%); perspective: 1000px; }
         .orb { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.6; animation: float-orb 20s infinite alternate cubic-bezier(0.45, 0.05, 0.55, 0.95); }
-        .orb-1 { width: 600px; height: 600px; background: linear-gradient(135deg, #BAE6FD, #38BDF8); top: -10%; left: -10%; }
-        .orb-2 { width: 500px; height: 500px; background: linear-gradient(135deg, #7DD3FC, #0284C7); bottom: -20%; right: -5%; animation-delay: -5s; }
+        .orb-1 { width: 600px; height: 600px; background: linear-gradient(135deg, #DDD6FE, #A78BFA); top: -10%; left: -10%; }
+        .orb-2 { width: 500px; height: 500px; background: linear-gradient(135deg, #C4B5FD, #8B5CF6); bottom: -20%; right: -5%; animation-delay: -5s; }
         .shape { position: absolute; background: linear-gradient(135deg, rgba(255,255,255,0.8), rgba(59,130,246,0.05)); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.9); box-shadow: 0 15px 35px rgba(29,78,216,0.08), inset 0 0 20px rgba(255,255,255,0.5); animation: float-3d 20s infinite linear; }
         .cube { width: 120px; height: 120px; border-radius: 24px; top: 15%; left: 8%; animation-duration: 25s; }
         .ring { width: 200px; height: 200px; border-radius: 50%; border: 35px solid rgba(255,255,255,0.4); top: 50%; right: 5%; animation-duration: 30s; animation-direction: reverse; background: transparent; }
@@ -285,9 +308,9 @@ try {
         .btn { padding: 14px 28px; border-radius: 12px; font-weight: 700; font-size: 14px; cursor: pointer; transition: all 0.3s; display: inline-flex; align-items: center; gap: 8px; border: none; font-family: inherit; }
         .btn-cancel { background: white; color: var(--text-dark); border: 1px solid var(--border); text-decoration: none; }
         .btn-cancel:hover { background: var(--bg-body); border-color: #94A3B8; }
-        .btn-submit { background: var(--primary); color: white; box-shadow: 0 4px 15px rgba(29, 78, 216, 0.2); pointer-events: none; opacity: 0.5; }
+        .btn-submit { background: var(--primary); color: white; box-shadow: 0 4px 15px rgba(124, 58, 237, 0.2); pointer-events: none; opacity: 0.5; }
         .btn-submit.active { pointer-events: auto; opacity: 1; }
-        .btn-submit.active:hover { background: #1e3a8a; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(29, 78, 216, 0.3); }
+        .btn-submit.active:hover { background: #6D28D9; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(124, 58, 237, 0.3); }
 
         @media (max-width: 768px) {
             .action-row { flex-direction: column-reverse; }
@@ -312,7 +335,7 @@ try {
                 <a href="manage-questions.php" class="btn-back"><i class="fas fa-arrow-left"></i> Bank</a>
                 <div class="brand-text">
                     <h2>Bulk Import</h2>
-                    <span class="hide-mobile">Question Repository</span>
+                    <span class="hide-mobile">Coordinator Content Portal</span>
                 </div>
             </div>
             <div class="nav-right">
@@ -352,7 +375,7 @@ try {
                 <div class="info-icon"><i class="fas fa-info-circle"></i></div>
                 <div class="info-content">
                     <h3>Important Instructions</h3>
-                    <p>To ensure successful processing, your CSV file must strictly follow our predefined format. Do not alter the header row. Map your questions to the exact <strong>Module Code</strong> (e.g., M1-R5, M2-R5) available in your system.</p>
+                    <p>To ensure successful processing, your CSV file must strictly follow our predefined format. Do not alter the header row. Map your questions to the exact <strong>Module Code</strong> (e.g., M1-R5). You can optionally assign questions to a specific <strong>Chapter Number</strong>.</p>
                     <a href="?download_template=true" class="btn-download">
                         <i class="fas fa-download"></i> Download CSV Template
                     </a>

@@ -1,12 +1,12 @@
 <?php
 // Enforce Strict Indian Standard Time
 date_default_timezone_set('Asia/Kolkata');
-session_name('NIELIT_ADMIN_SESSION');
+session_name('NIELIT_COORD_SESSION'); // 🟢 Switched to Coordinator Session
 session_start();
 
-// Check if user is logged in and is admin
-if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 'admin') {
-    header("Location: admin-login.php");
+// Check if user is logged in and is coordinator
+if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 'coordinator') {
+    header("Location: coordinator-login.php");
     exit();
 }
 
@@ -19,7 +19,7 @@ $exam_id = $_GET['id'];
 
 // ============================================================================
 // NEW ARCHITECTURE: Import centralized database connection
-// Path assumes this file is in: /public/admin/edit-exam.php
+// Path assumes this file is in: /public/coordinator/edit-exam.php
 // ============================================================================
 require_once __DIR__ . '/../../config/database.php';
 
@@ -136,19 +136,19 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Edit Exam Session - NIELIT Admin Console</title>
+    <title>Edit Exam Session - NIELIT Coordinator Portal</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
-            /* Premium White/Blue Gradient Theme */
-            --primary: #2563EB;
-            --primary-light: #60A5FA;
-            --primary-dark: #1E40AF;
-            --primary-bg: #EFF6FF;
-            --gradient-main: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%);
+            /* 🟢 COORDINATOR PURPLE THEME */
+            --primary: #7C3AED;
+            --primary-light: #8B5CF6;
+            --primary-dark: #6D28D9;
+            --primary-bg: #EDE9FE;
+            --gradient-main: linear-gradient(135deg, #7C3AED 0%, #8B5CF6 100%);
             
             --success: #059669;
             --success-bg: #D1FAE5;
@@ -162,9 +162,9 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
             --card-bg: rgba(255, 255, 255, 0.85);
             --border: rgba(226, 232, 240, 0.9);
             
-            --shadow-sm: 0 4px 6px -1px rgba(37, 99, 235, 0.05);
-            --shadow-md: 0 10px 25px -5px rgba(37, 99, 235, 0.1);
-            --shadow-float: 0 20px 40px -10px rgba(37, 99, 235, 0.15);
+            --shadow-sm: 0 4px 6px -1px rgba(124, 58, 237, 0.05);
+            --shadow-md: 0 10px 25px -5px rgba(124, 58, 237, 0.1);
+            --shadow-float: 0 20px 40px -10px rgba(124, 58, 237, 0.15);
             
             --radius-md: 14px;
             --radius-lg: 24px;
@@ -182,13 +182,13 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
         }
         .ambient-wrapper::after {
             content: ''; position: absolute; inset: 0;
-            background: radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.1) 0%, transparent 70%);
+            background: radial-gradient(circle at 50% 0%, rgba(124, 58, 237, 0.1) 0%, transparent 70%);
         }
         .shape3d {
             position: absolute; background: linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,255,255,0.4));
             backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
             border: 1px solid rgba(255,255,255,0.8);
-            box-shadow: 0 25px 50px -12px rgba(37, 99, 235, 0.15), inset 0 0 20px rgba(255,255,255,0.6);
+            box-shadow: 0 25px 50px -12px rgba(124, 58, 237, 0.15), inset 0 0 20px rgba(255,255,255,0.6);
             transform-style: preserve-3d; animation: float-complex 25s infinite cubic-bezier(0.4, 0, 0.2, 1);
         }
         .s-cube { width: 150px; height: 150px; border-radius: 30px; top: 10%; left: 5%; animation-duration: 28s; }
@@ -217,7 +217,7 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
             text-decoration: none; font-weight: 700; font-size: 13px; 
             transition: all 0.3s ease; box-shadow: var(--shadow-sm);
         }
-        .btn-back:hover { background: var(--primary); color: white; border-color: var(--primary); transform: translateX(-4px); box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2); }
+        .btn-back:hover { background: var(--primary); color: white; border-color: var(--primary); transform: translateX(-4px); box-shadow: 0 4px 12px rgba(124, 58, 237, 0.2); }
         .brand-text h2 { font-size: 20px; font-weight: 800; background: var(--gradient-main); -webkit-background-clip: text; -webkit-text-fill-color: transparent; line-height: 1.2; }
         .brand-text span { font-size: 12px; color: var(--text-muted); font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;}
         .user-info { display: flex; align-items: center; gap: 12px; background: white; padding: 6px 16px 6px 6px; border-radius: 50px; border: 1px solid var(--border); box-shadow: var(--shadow-sm);}
@@ -274,8 +274,8 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
         .btn { padding: 15px 30px; border-radius: var(--radius-md); font-weight: 800; font-size: 14px; cursor: pointer; transition: all 0.3s ease; display: inline-flex; align-items: center; gap: 10px; border: none; text-decoration: none; font-family: inherit; }
         .btn-cancel { background: white; color: var(--text-dark); border: 2px solid var(--border); }
         .btn-cancel:hover { background: var(--bg-page); border-color: #CBD5E1; transform: translateY(-2px); }
-        .btn-submit { background: var(--gradient-main); color: white; box-shadow: 0 10px 20px -5px rgba(37, 99, 235, 0.4); }
-        .btn-submit:hover { transform: translateY(-3px); box-shadow: 0 15px 25px -5px rgba(37, 99, 235, 0.5); }
+        .btn-submit { background: var(--gradient-main); color: white; box-shadow: 0 10px 20px -5px rgba(124, 58, 237, 0.4); }
+        .btn-submit:hover { transform: translateY(-3px); box-shadow: 0 15px 25px -5px rgba(124, 58, 237, 0.5); }
 
         @media (max-width: 768px) {
             .form-grid { grid-template-columns: 1fr; gap: 20px; }
@@ -303,13 +303,13 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
                 </a>
                 <div class="brand-text">
                     <h2>Schedule Editor</h2>
-                    <span class="hide-mobile">NIELIT Admin Console</span>
+                    <span class="hide-mobile">NIELIT Coordinator Portal</span>
                 </div>
             </div>
             <div class="nav-right">
                 <div class="user-info hide-mobile">
                     <span><?php echo htmlspecialchars(explode(' ', $_SESSION['full_name'])[0]); ?></span>
-                    <div class="user-avatar"><?php echo strtoupper(substr($_SESSION['full_name'] ?? 'A', 0, 1)); ?></div>
+                    <div class="user-avatar"><?php echo strtoupper(substr($_SESSION['full_name'] ?? 'C', 0, 1)); ?></div>
                 </div>
             </div>
         </nav>

@@ -23,8 +23,8 @@ $centers = [];
 $course_groups = [];
 
 try {
-    // Fetch data for dropdowns
-    $categories = $pdo->query("SELECT id, category_code, category_name, duration_minutes FROM exam_categories ORDER BY category_code ASC")->fetchAll(PDO::FETCH_ASSOC);
+    // 🟢 NEW: Fetch chapter_count for dynamic dropdowns
+    $categories = $pdo->query("SELECT id, category_code, category_name, duration_minutes, chapter_count FROM exam_categories ORDER BY category_code ASC")->fetchAll(PDO::FETCH_ASSOC);
     $centers = $pdo->query("SELECT id, center_code, center_name, city, capacity FROM exam_centers WHERE is_active = true ORDER BY center_name")->fetchAll(PDO::FETCH_ASSOC);
     
     // --- SMART CATEGORIZATION ENGINE ---
@@ -57,15 +57,14 @@ try {
 
     if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $category_id = $_POST['category_id']; 
+        $chapter_number = !empty($_POST['chapter_number']) ? $_POST['chapter_number'] : null; // 🟢 Capture Chapter
         $conductor_name = trim($_POST['conductor_name']);
         
-        // Use strict integers for database booleans to prevent insertion errors
         $is_active = isset($_POST['is_active']) ? 1 : 0;
         $is_practice = isset($_POST['is_practice']) ? 1 : 0;
         
         if ($is_practice) {
             $center_id = null; 
-            // Assign a far future date to bypass DB constraints so it never expires
             $exam_date = date('Y-m-d', strtotime('+10 years')); 
             $start_time = '00:00:00';
             $end_time = '23:59:59';
@@ -91,12 +90,15 @@ try {
             $cat = array_filter($categories, fn($c) => $c['id'] == $category_id);
             $cat = reset($cat);
             
+            // 🟢 NEW: Add Chapter suffix to Exam Code if applicable
+            $chapter_suffix = $chapter_number ? "-C{$chapter_number}" : "";
+            
             if ($is_practice) {
-                $exam_code = $cat['category_code'] . '-PRACTICE-' . rand(10000, 99999);
+                $exam_code = $cat['category_code'] . $chapter_suffix . '-PRACTICE-' . rand(10000, 99999);
             } else {
                 $cen = array_filter($centers, fn($c) => $c['id'] == $center_id);
                 $cen = reset($cen);
-                $base_code = $cat['category_code'] . '-' . $cen['center_code'] . '-' . date('ymd', strtotime($exam_date)) . '-' . date('Hi', strtotime($start_time));
+                $base_code = $cat['category_code'] . $chapter_suffix . '-' . $cen['center_code'] . '-' . date('ymd', strtotime($exam_date)) . '-' . date('Hi', strtotime($start_time));
                 $exam_code = $base_code;
                 
                 $check = $pdo->prepare("SELECT id FROM exam_sessions WHERE exam_code = ?");
@@ -109,11 +111,12 @@ try {
             // Atomic Transaction to prevent race conditions
             $pdo->beginTransaction();
             
+            // 🟢 NEW: Insert chapter_number into exam_sessions
             $stmt = $pdo->prepare("
-                INSERT INTO exam_sessions (exam_code, category_id, center_id, exam_date, start_time, end_time, total_seats, is_active, created_by, is_practice, exam_conductor)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO exam_sessions (exam_code, category_id, chapter_number, center_id, exam_date, start_time, end_time, total_seats, is_active, created_by, is_practice, exam_conductor)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
-            $stmt->execute([$exam_code, $category_id, $center_id, $exam_date, $start_time, $end_time, $total_seats, $is_active, $_SESSION['user_id'], $is_practice, $conductor_name]);
+            $stmt->execute([$exam_code, $category_id, $chapter_number, $center_id, $exam_date, $start_time, $end_time, $total_seats, $is_active, $_SESSION['user_id'], $is_practice, $conductor_name]);
             
             $pdo->commit();
             
@@ -145,9 +148,9 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
             /* 🟢 COORDINATOR PURPLE THEME */
             --primary: #7C3AED;
             --primary-light: #8B5CF6;
-            --primary-dark: #6D28D9;
+            --primary-dark: #5B21B6;
             --primary-bg: #EDE9FE;
-            --gradient-main: linear-gradient(135deg, #7C3AED 0%, #8B5CF6 100%);
+            --gradient-main: linear-gradient(135deg, #7C3AED 0%, #4F46E5 100%);
             
             --success: #059669;
             --success-bg: #D1FAE5;
@@ -170,7 +173,15 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: var(--bg-page); color: var(--text-dark); min-height: 100vh; overflow-x: hidden; padding-bottom: 60px; }
+        
+        body { 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            background-color: var(--bg-page); 
+            color: var(--text-dark); 
+            min-height: 100vh; 
+            overflow-x: hidden; 
+            padding-bottom: 60px; 
+        }
 
         /* --- ADVANCED 3D AMBIENT BACKGROUND --- */
         .ambient-wrapper {
@@ -179,17 +190,22 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
             background: linear-gradient(135deg, #F8FAFC 0%, #E2E8F0 100%);
             perspective: 1200px;
         }
+        
         .ambient-wrapper::after {
             content: ''; position: absolute; inset: 0;
             background: radial-gradient(circle at 50% 0%, rgba(124, 58, 237, 0.1) 0%, transparent 70%);
         }
+
         .shape3d {
-            position: absolute; background: linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,255,255,0.4));
+            position: absolute;
+            background: linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,255,255,0.4));
             backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
             border: 1px solid rgba(255,255,255,0.8);
             box-shadow: 0 25px 50px -12px rgba(124, 58, 237, 0.15), inset 0 0 20px rgba(255,255,255,0.6);
-            transform-style: preserve-3d; animation: float-complex 25s infinite cubic-bezier(0.4, 0, 0.2, 1);
+            transform-style: preserve-3d;
+            animation: float-complex 25s infinite cubic-bezier(0.4, 0, 0.2, 1);
         }
+
         .s-cube { width: 150px; height: 150px; border-radius: 30px; top: 10%; left: 5%; animation-duration: 28s; }
         .s-pill { width: 250px; height: 80px; border-radius: 50px; top: 60%; right: -5%; animation-duration: 32s; animation-direction: reverse; }
         .s-circle { width: 180px; height: 180px; border-radius: 50%; bottom: 5%; left: 15%; animation-duration: 22s; }
@@ -205,10 +221,13 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
         .navbar-wrapper { 
             position: sticky; top: 0; z-index: 1000; 
             background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.6); box-shadow: var(--shadow-sm); 
+            border-bottom: 1px solid rgba(255, 255, 255, 0.6); 
+            box-shadow: var(--shadow-sm); 
         }
         .top-nav { padding: 15px 40px; display: flex; justify-content: space-between; align-items: center; max-width: 1400px; margin: 0 auto; }
+        
         .nav-left { display: flex; align-items: center; gap: 24px; }
+        
         .btn-back { 
             display: inline-flex; align-items: center; gap: 8px; 
             background: white; border: 1px solid var(--border); 
@@ -216,9 +235,14 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
             text-decoration: none; font-weight: 700; font-size: 13px; 
             transition: all 0.3s ease; box-shadow: var(--shadow-sm);
         }
-        .btn-back:hover { background: var(--primary); color: white; border-color: var(--primary); transform: translateX(-4px); box-shadow: 0 4px 12px rgba(124, 58, 237, 0.2); }
+        .btn-back:hover { 
+            background: var(--primary); color: white; border-color: var(--primary);
+            transform: translateX(-4px); box-shadow: 0 4px 12px rgba(124, 58, 237, 0.2); 
+        }
+
         .brand-text h2 { font-size: 20px; font-weight: 800; background: var(--gradient-main); -webkit-background-clip: text; -webkit-text-fill-color: transparent; line-height: 1.2; }
         .brand-text span { font-size: 12px; color: var(--text-muted); font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;}
+
         .user-info { display: flex; align-items: center; gap: 12px; background: white; padding: 6px 16px 6px 6px; border-radius: 50px; border: 1px solid var(--border); box-shadow: var(--shadow-sm);}
         .user-info span { font-size: 14px; font-weight: 700; color: var(--text-dark); }
         .user-avatar { width: 34px; height: 34px; background: var(--gradient-main); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px;}
@@ -226,6 +250,7 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
         /* --- MAIN FORM CONTAINER --- */
         .container { max-width: 900px; margin: 50px auto; padding: 0 20px; position: relative; z-index: 10; animation: slideUpFade 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
         @keyframes slideUpFade { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+
         .page-header { text-align: center; margin-bottom: 35px; }
         .page-header h1 { font-size: 32px; font-weight: 800; color: var(--text-dark); margin-bottom: 8px; letter-spacing: -0.5px;}
         .page-header p { color: var(--text-muted); font-size: 15px; font-weight: 500;}
@@ -233,28 +258,53 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
         .alert-error { background: white; color: var(--danger); border-left: 4px solid var(--danger); box-shadow: var(--shadow-md); padding: 18px 24px; border-radius: 8px; font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 12px; margin-bottom: 25px; }
 
         /* Form Card */
-        .form-card { background: var(--card-bg); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border-radius: var(--radius-lg); border: 1px solid rgba(255,255,255,0.6); box-shadow: var(--shadow-float); padding: 45px; }
-        .section-title { font-size: 13px; font-weight: 800; color: var(--primary); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 25px; display: flex; align-items: center; gap: 10px; }
+        .form-card { 
+            background: var(--card-bg); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+            border-radius: var(--radius-lg); border: 1px solid rgba(255,255,255,0.6); 
+            box-shadow: var(--shadow-float); padding: 45px; 
+        }
+
+        .section-title { 
+            font-size: 13px; font-weight: 800; color: var(--primary); 
+            text-transform: uppercase; letter-spacing: 1.5px; 
+            margin-bottom: 25px; display: flex; align-items: center; gap: 10px; 
+        }
         .section-title::after { content: ''; flex: 1; height: 2px; background: linear-gradient(90deg, var(--primary-bg), transparent); border-radius: 2px; }
 
+        /* 🟢 UPDATED GRID: 3 Columns for Top Section */
         .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 35px; }
+        .form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-bottom: 35px; }
         .form-group.full-width { grid-column: 1 / -1; }
+        
         .form-group label { display: block; font-size: 13px; font-weight: 800; color: var(--text-dark); margin-bottom: 8px; }
         
         .input-wrap { position: relative; transition: all 0.3s; }
         .input-icon { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 15px; pointer-events: none; transition: 0.3s; }
-        .form-control { width: 100%; padding: 15px 18px 15px 50px; border-radius: var(--radius-md); border: 2px solid var(--border); background: white; font-size: 14px; font-weight: 600; color: var(--text-dark); outline: none; transition: all 0.3s ease; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02); font-family: inherit; }
+        
+        .form-control { 
+            width: 100%; padding: 15px 18px 15px 50px; border-radius: var(--radius-md); 
+            border: 2px solid var(--border); background: white; 
+            font-size: 14px; font-weight: 600; color: var(--text-dark);
+            outline: none; transition: all 0.3s ease; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+            font-family: inherit;
+        }
         .form-control:focus { border-color: var(--primary-light); box-shadow: 0 0 0 4px var(--primary-bg); }
         .input-wrap:focus-within .input-icon { color: var(--primary); }
-        .form-control[readonly] { background: #F8FAFC; color: var(--text-muted); border-color: #E2E8F0; box-shadow: none; cursor: not-allowed; }
         
         select.form-control { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 18px center; }
         select:disabled { background-color: #F8FAFC; color: #94A3B8; cursor: not-allowed; border-color: #E2E8F0; }
+
         input[type="date"].form-control, input[type="time"].form-control { padding-left: 50px; }
         input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webkit-calendar-picker-indicator { cursor: pointer; opacity: 0.5; transition: 0.2s;}
         input[type="date"]:focus::-webkit-calendar-picker-indicator, input[type="time"]:focus::-webkit-calendar-picker-indicator { opacity: 1; }
 
-        .practice-banner { background: linear-gradient(to right, #FFFBEB, white); border: 1px solid #FEF3C7; padding: 24px; border-radius: var(--radius-md); margin-bottom: 35px; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow-sm); }
+        /* Practice Banner Styling */
+        .practice-banner { 
+            background: linear-gradient(to right, #FFFBEB, white); border: 1px solid #FEF3C7; 
+            padding: 24px; border-radius: var(--radius-md); margin-bottom: 35px; 
+            display: flex; align-items: center; justify-content: space-between; 
+            box-shadow: var(--shadow-sm);
+        }
         .practice-banner h3 { color: var(--warning); font-size: 16px; margin-bottom: 4px; font-weight: 800; display: flex; align-items: center; gap: 8px;}
         .practice-banner p { color: #92400E; font-size: 13px; font-weight: 600; margin: 0;}
 
@@ -267,8 +317,10 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
         input:checked + .slider:before { transform: translateX(26px); }
         input:checked + .slider.warning { background-color: var(--warning); }
 
+        /* Formal Settings Wrapper */
         #formal-settings { transition: opacity 0.3s ease, height 0.3s ease; }
 
+        /* Actions */
         .action-row { display: flex; justify-content: flex-end; gap: 15px; margin-top: 40px; padding-top: 25px; border-top: 2px dashed var(--border); }
         .btn { padding: 15px 30px; border-radius: var(--radius-md); font-weight: 800; font-size: 14px; cursor: pointer; transition: all 0.3s ease; display: inline-flex; align-items: center; gap: 10px; border: none; text-decoration: none; font-family: inherit; }
         .btn-cancel { background: white; color: var(--text-dark); border: 2px solid var(--border); }
@@ -277,7 +329,7 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
         .btn-submit:hover { transform: translateY(-3px); box-shadow: 0 15px 25px -5px rgba(124, 58, 237, 0.5); }
 
         @media (max-width: 768px) {
-            .form-grid { grid-template-columns: 1fr; gap: 20px; }
+            .form-grid, .form-grid-3 { grid-template-columns: 1fr; gap: 20px; }
             .action-row { flex-direction: column-reverse; }
             .btn { width: 100%; justify-content: center; }
             .form-card { padding: 25px; }
@@ -343,17 +395,17 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
 
             <div class="section-title"><i class="fas fa-layer-group"></i> Exam Classification</div>
             
-            <div class="form-grid">
-                <div class="form-group full-width">
-                    <label>Exam Conductor Name <span style="color:var(--danger);">*</span></label>
-                    <div class="input-wrap">
-                        <input type="text" name="conductor_name" class="form-control" placeholder="E.g. Mr. Rajesh Kumar / NIELIT BBSR Team" required value="<?php echo isset($_POST['conductor_name']) ? htmlspecialchars($_POST['conductor_name']) : ''; ?>">
-                        <i class="fas fa-user-tie input-icon"></i>
-                    </div>
+            <div class="form-group full-width" style="margin-bottom: 24px;">
+                <label>Exam Conductor Name <span style="color:var(--danger);">*</span></label>
+                <div class="input-wrap">
+                    <input type="text" name="conductor_name" class="form-control" placeholder="E.g. Mr. Rajesh Kumar / NIELIT BBSR Team" required value="<?php echo isset($_POST['conductor_name']) ? htmlspecialchars($_POST['conductor_name']) : ''; ?>">
+                    <i class="fas fa-user-tie input-icon"></i>
                 </div>
-                
+            </div>
+
+            <div class="form-grid-3">
                 <div class="form-group">
-                    <label>Course / Program Category <span style="color:var(--danger);">*</span></label>
+                    <label>Program Category <span style="color:var(--danger);">*</span></label>
                     <div class="input-wrap">
                         <select id="parentCategory" class="form-control" required onchange="updateModules()">
                             <option value="">Select Category...</option>
@@ -368,10 +420,21 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
                 <div class="form-group">
                     <label>Specific Module <span style="color:var(--danger);">*</span></label>
                     <div class="input-wrap">
-                        <select name="category_id" id="category_id" class="form-control" required disabled>
+                        <select name="category_id" id="category_id" class="form-control" required disabled onchange="updateChapters()">
                             <option value="">Select Course first...</option>
                         </select>
                         <i class="fas fa-book input-icon"></i>
+                    </div>
+                </div>
+
+                <!-- 🟢 NEW: CHAPTER SELECTION FOR EXAMS -->
+                <div class="form-group">
+                    <label>Specific Chapter (Optional)</label>
+                    <div class="input-wrap">
+                        <select name="chapter_number" id="chapterId" class="form-control" disabled>
+                            <option value="">Entire Module (All Chapters)</option>
+                        </select>
+                        <i class="fas fa-bookmark input-icon"></i>
                     </div>
                 </div>
             </div>
@@ -483,12 +546,38 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
                 categoryData[parentVal].forEach(mod => {
                     const opt = document.createElement('option');
                     opt.value = mod.id;
-                    opt.textContent = mod.category_code + ' - ' + mod.category_name + ' (' + mod.duration_minutes + ' mins)';
+                    opt.textContent = mod.category_code + ' - ' + mod.category_name;
+                    // 🟢 NEW: Add chapter count mapping for JS
+                    opt.dataset.chapters = mod.chapter_count || 1;
                     modSelect.appendChild(opt);
                 });
                 modSelect.disabled = false;
             } else { 
                 modSelect.disabled = true; 
+            }
+            updateChapters(); // 🟢 Trigger chapter update
+        }
+
+        // 🟢 NEW: Read chapter count and populate dropdown
+        function updateChapters() {
+            const modSelect = document.getElementById('category_id');
+            const chapSelect = document.getElementById('chapterId');
+            
+            chapSelect.innerHTML = '<option value="">Entire Module (All Chapters)</option>';
+            
+            if (modSelect.selectedIndex > 0) {
+                const selectedOption = modSelect.options[modSelect.selectedIndex];
+                const totalChapters = parseInt(selectedOption.dataset.chapters) || 1;
+                
+                for (let i = 1; i <= totalChapters; i++) {
+                    const opt = document.createElement('option');
+                    opt.value = i;
+                    opt.textContent = "Chapter " + i;
+                    chapSelect.appendChild(opt);
+                }
+                chapSelect.disabled = false;
+            } else {
+                chapSelect.disabled = true;
             }
         }
 
@@ -513,12 +602,19 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
             
             // Re-populate dropdowns if there was a validation error on POST
             const preselectedModuleId = "<?php echo isset($_POST['category_id']) ? $_POST['category_id'] : ''; ?>";
+            const preselectedChapterId = "<?php echo isset($_POST['chapter_number']) ? $_POST['chapter_number'] : ''; ?>";
+            
             if(preselectedModuleId) {
                 for(const [catName, modules] of Object.entries(categoryData)) {
                     if(modules.some(m => m.id == preselectedModuleId)) {
                         document.getElementById('parentCategory').value = catName;
                         updateModules();
                         document.getElementById('category_id').value = preselectedModuleId;
+                        updateChapters();
+                        
+                        if(preselectedChapterId) {
+                            document.getElementById('chapterId').value = preselectedChapterId;
+                        }
                         break;
                     }
                 }

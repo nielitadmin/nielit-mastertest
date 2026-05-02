@@ -29,7 +29,7 @@ $success = '';
 $is_late = false; // Flag for the 30-minute late rule
 
 try {
-    // Get exam details (Using LEFT JOIN to safely handle Practice Exams with NULL centers)
+    // 🟢 UPDATED QUERY: Fetch chapter_number from exam_sessions
     $stmt = $pdo->prepare("
         SELECT 
             es.*,
@@ -54,7 +54,7 @@ try {
         exit();
     }
     
-    // 🟢 FOREIGN KEY FIX: Check if the candidate profile exists (Using user_id instead of id)
+    // Check if the candidate profile exists (Using user_id instead of id)
     $candStmt = $pdo->prepare("SELECT user_id FROM candidates WHERE user_id = ?");
     $candStmt->execute([$_SESSION['user_id']]);
     $profile_exists = $candStmt->fetchColumn();
@@ -111,7 +111,7 @@ try {
                     throw new Exception("Sorry, the last seat was just taken by another candidate.");
                 }
 
-                // 🟢 THE FIX: If profile is missing, quietly create it so the Foreign Key is happy!
+                // If profile is missing, quietly create it
                 if (!$profile_exists) {
                     $createProfile = $pdo->prepare("INSERT INTO candidates (user_id, registration_number) VALUES (?, ?)");
                     $createProfile->execute([$_SESSION['user_id'], $_SESSION['username']]);
@@ -147,9 +147,12 @@ try {
     }
     
 } catch (PDOException $e) {
-    // Show the actual error during development so we don't fly blind
+    // Show the actual error during development
     $error = "Database Error: " . $e->getMessage();
 }
+
+// 🟢 NEW: Formatting Helper for Chapters
+$chapterDisplay = !empty($exam['chapter_number']) ? 'Chapter ' . $exam['chapter_number'] : 'Entire Module';
 ?>
 
 <!DOCTYPE html>
@@ -170,7 +173,6 @@ try {
             --primary-bg: #D1FAE5; 
             --secondary: #0F172A; 
             
-            /* 🟢 ADDED MISSING SUCCESS VARIABLES */
             --success: #059669;
             --success-bg: #D1FAE5;
             
@@ -184,7 +186,7 @@ try {
             --radius-md: 16px; 
             --danger: #DC2626; 
             --danger-bg: #FEE2E2; 
-            --practice: #2563EB; /* Changed to Blue for Payment Context */
+            --practice: #2563EB; 
             --practice-bg: #DBEAFE; 
             --shadow-sm: 0 4px 6px -1px rgba(5, 150, 105, 0.05);
             --shadow-glass: 0 20px 40px -10px rgba(5, 150, 105, 0.15);
@@ -280,6 +282,8 @@ try {
         .detail-value { font-size: 15px; font-weight: 700; color: var(--text-dark); display: flex; align-items: center; gap: 8px;}
         .detail-value i { color: var(--primary); font-size: 14px; }
         .val-practice i { color: var(--practice); }
+        
+        .chapter-tag { background: var(--primary-bg); color: var(--primary); font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 800; margin-left: auto; letter-spacing: 0.5px; border: 1px solid #A7F3D0;}
 
         /* Info Box */
         .info-box {
@@ -406,8 +410,12 @@ try {
 
                 <div class="details-grid">
                     <div class="detail-item full-width">
-                        <span class="detail-label">Examination Category</span>
-                        <span class="detail-value val-<?php echo $exam['is_practice'] ? 'practice' : 'primary'; ?>"><i class="fas fa-book-open"></i> <?php echo htmlspecialchars($exam['category_code'] . ' - ' . $exam['category_name']); ?></span>
+                        <span class="detail-label">Examination Subject</span>
+                        <span class="detail-value val-<?php echo $exam['is_practice'] ? 'practice' : 'primary'; ?>" style="flex-wrap: wrap;">
+                            <i class="fas fa-book-open"></i> 
+                            <?php echo htmlspecialchars($exam['category_code'] . ' - ' . $exam['category_name']); ?>
+                            <span class="chapter-tag"><?php echo $chapterDisplay; ?></span>
+                        </span>
                     </div>
                     
                     <div class="detail-item">

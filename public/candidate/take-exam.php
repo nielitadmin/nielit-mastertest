@@ -20,10 +20,10 @@ $exam_id = $_GET['exam_id'];
 require_once __DIR__ . '/../../config/database.php';
 
 try {
-    // 1. Get registration details
+    // 1. Get registration details (🟢 UPDATED to fetch chapter_number)
     $stmt = $pdo->prepare("
         SELECT er.id as registration_id, es.exam_date, es.start_time, es.end_time, es.is_practice, 
-               ec.duration_minutes, ec.category_name, ec.category_code,
+               es.chapter_number, ec.duration_minutes, ec.category_name, ec.category_code,
                es.exam_code, es.category_id
         FROM exam_registrations er
         JOIN exam_sessions es ON er.session_id = es.id
@@ -40,8 +40,8 @@ try {
     $candidate->execute([$_SESSION['user_id']]);
     $candidate_info = $candidate->fetch(PDO::FETCH_ASSOC);
     
-    // 3. Fetch up to 100 questions
-    $questions = $pdo->prepare("
+    // 3. Fetch up to 100 questions (🟢 UPDATED: Dynamically filter by chapter if set)
+    $q_query = "
         SELECT q.*, 
                (SELECT JSON_ARRAYAGG(
                    JSON_OBJECT(
@@ -52,13 +52,23 @@ try {
                ) FROM question_options WHERE question_id = q.id) as options
         FROM questions q
         WHERE q.category_id = ? AND q.is_active = 1
-        ORDER BY q.id ASC
-        LIMIT 100 
-    ");
-    $questions->execute([$registration['category_id']]);
-    $questions = $questions->fetchAll(PDO::FETCH_ASSOC);
+    ";
     
-    if (empty($questions)) { die("No questions available for this exam."); }
+    $q_params = [$registration['category_id']];
+    
+    // 🟢 Filter by chapter if the exam session specifies one
+    if (!empty($registration['chapter_number'])) {
+        $q_query .= " AND q.chapter_number = ?";
+        $q_params[] = $registration['chapter_number'];
+    }
+    
+    $q_query .= " ORDER BY RAND() LIMIT 100"; // Optionally randomize question order
+    
+    $questions_stmt = $pdo->prepare($q_query);
+    $questions_stmt->execute($q_params);
+    $questions = $questions_stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    if (empty($questions)) { die("No active questions found for this specific module or chapter."); }
     
     // 4. Get saved answers
     $answers = $pdo->prepare("SELECT question_id, selected_option_id FROM candidate_responses WHERE registration_id = ?");
@@ -95,6 +105,9 @@ try {
 $total_questions = count($questions);
 $candidate_name = !empty($candidate_info['full_name']) ? $candidate_info['full_name'] : 'Candidate';
 $roll_number = !empty($candidate_info['registration_number']) ? $candidate_info['registration_number'] : 'N/A';
+
+// 🟢 NEW: Format the display name for the section
+$chapter_display = !empty($registration['chapter_number']) ? ' - Chapter ' . $registration['chapter_number'] : ' - Comprehensive';
 ?>
 
 <!DOCTYPE html>
@@ -177,7 +190,7 @@ $roll_number = !empty($candidate_info['registration_number']) ? $candidate_info[
 
         .left-actions { display: flex; gap: 10px; }
 
-        /* 🟢 OPTIMIZED RIGHT PANEL UI */
+        /* RIGHT PANEL */
         .right-panel { width: 340px; display: flex; flex-direction: column; background: var(--tcs-light); flex-shrink: 0; }
         
         /* Compact Video Proctoring Box */
@@ -263,7 +276,8 @@ $roll_number = !empty($candidate_info['registration_number']) ? $candidate_info[
         
         <div class="left-panel">
             <div class="section-bar">
-                <div>Section: <span id="sectionName"><?php echo htmlspecialchars($registration['category_code']); ?> Main</span></div>
+                <!-- 🟢 UPDATED UI to show Chapter Context -->
+                <div>Section: <span id="sectionName"><?php echo htmlspecialchars($registration['category_code']) . $chapter_display; ?></span></div>
                 <div style="cursor: pointer;" onclick="confirmExit()">Exit Exam <i class="fas fa-sign-out-alt"></i></div>
             </div>
 

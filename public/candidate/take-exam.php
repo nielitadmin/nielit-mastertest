@@ -20,7 +20,7 @@ $exam_id = $_GET['exam_id'];
 require_once __DIR__ . '/../../config/database.php';
 
 try {
-    // 1. Get registration details (🟢 UPDATED to fetch chapter_number)
+    // 1. Get registration details (Fetch chapter_number)
     $stmt = $pdo->prepare("
         SELECT er.id as registration_id, es.exam_date, es.start_time, es.end_time, es.is_practice, 
                es.chapter_number, ec.duration_minutes, ec.category_name, ec.category_code,
@@ -40,7 +40,7 @@ try {
     $candidate->execute([$_SESSION['user_id']]);
     $candidate_info = $candidate->fetch(PDO::FETCH_ASSOC);
     
-    // 3. Fetch up to 100 questions (🟢 UPDATED: Dynamically filter by chapter if set)
+    // 3. Fetch Questions dynamically based on Chapter
     $q_query = "
         SELECT q.*, 
                (SELECT JSON_ARRAYAGG(
@@ -56,19 +56,24 @@ try {
     
     $q_params = [$registration['category_id']];
     
-    // 🟢 Filter by chapter if the exam session specifies one
+    // Filter by chapter if the exam session specifies one
     if (!empty($registration['chapter_number'])) {
         $q_query .= " AND q.chapter_number = ?";
         $q_params[] = $registration['chapter_number'];
     }
     
-    $q_query .= " ORDER BY RAND() LIMIT 100"; // Optionally randomize question order
+    // 🟢 LIMIT 100 REMOVED: Load the exact number of questions present in this context
+    $q_query .= " ORDER BY RAND()"; 
     
     $questions_stmt = $pdo->prepare($q_query);
     $questions_stmt->execute($q_params);
     $questions = $questions_stmt->fetchAll(PDO::FETCH_ASSOC);
     
     if (empty($questions)) { die("No active questions found for this specific module or chapter."); }
+    
+    // Calculate Dynamic Exam Properties
+    $total_questions = count($questions);
+    $total_marks = array_sum(array_column($questions, 'marks'));
     
     // 4. Get saved answers
     $answers = $pdo->prepare("SELECT question_id, selected_option_id FROM candidate_responses WHERE registration_id = ?");
@@ -80,10 +85,16 @@ try {
     if ($registration['is_practice']) {
         $session_timer_key = 'exam_end_' . $registration['registration_id'];
         if (!isset($_SESSION[$session_timer_key])) {
-            $_SESSION[$session_timer_key] = time() + ($registration['duration_minutes'] * 60);
+            
+            // 🟢 DYNAMIC DURATION: NIELIT standard is 1.2 mins per question (120 mins / 100 qs).
+            // If it's an entire module, use standard duration. If it's a chapter, scale time dynamically!
+            $duration_mins = empty($registration['chapter_number']) ? $registration['duration_minutes'] : ceil($total_questions * 1.2);
+            
+            $_SESSION[$session_timer_key] = time() + ($duration_mins * 60);
         }
         $end_time = $_SESSION[$session_timer_key];
     } else {
+        // Formal exams strictly follow the scheduled wall-clock time
         $date_clean = explode(' ', $registration['exam_date'])[0];
         $start_clean = explode('+', $registration['start_time'])[0];
         $end_clean = explode('+', $registration['end_time'])[0];
@@ -91,9 +102,7 @@ try {
         $start_ts = strtotime($date_clean . ' ' . $start_clean);
         $end_ts = strtotime($date_clean . ' ' . $end_clean);
         
-        if ($end_ts < $start_ts) { 
-            $end_ts += 86400; 
-        } 
+        if ($end_ts < $start_ts) { $end_ts += 86400; } 
         
         $end_time = $end_ts;
     }
@@ -102,11 +111,8 @@ try {
     die("Database Error: " . $e->getMessage()); 
 }
 
-$total_questions = count($questions);
 $candidate_name = !empty($candidate_info['full_name']) ? $candidate_info['full_name'] : 'Candidate';
 $roll_number = !empty($candidate_info['registration_number']) ? $candidate_info['registration_number'] : 'N/A';
-
-// 🟢 NEW: Format the display name for the section
 $chapter_display = !empty($registration['chapter_number']) ? ' - Chapter ' . $registration['chapter_number'] : ' - Comprehensive';
 ?>
 
@@ -216,6 +222,8 @@ $chapter_display = !empty($registration['chapter_number']) ? ' - Chapter ' . $re
         .candidate-photo { width: 45px; height: 45px; background: var(--tcs-border); display: flex; align-items: center; justify-content: center; font-size: 20px; color: white; border-radius: 4px; flex-shrink: 0;}
         .candidate-details { font-size: 12px; line-height: 1.3; color: #555;}
         .candidate-details strong { font-size: 14px; color: var(--tcs-blue); display: block; margin-bottom: 2px;}
+        .meta-tags { display: flex; gap: 8px; margin-top: 4px; }
+        .meta-tag { background: #E0F2FE; color: #0284C7; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px; }
 
         /* Inline Timer Box */
         .timer-box { padding: 12px 15px; background: white; border-bottom: 1px solid var(--tcs-border); display: flex; justify-content: space-between; align-items: center; }
@@ -251,11 +259,11 @@ $chapter_display = !empty($registration['chapter_number']) ? ' - Chapter ' . $re
 
         /* MODAL */
         .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; }
-        .modal-content { background: white; padding: 25px; width: 500px; border-radius: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+        .modal-content { background: white; padding: 25px; width: 600px; border-radius: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
         .modal-header { border-bottom: 1px solid var(--tcs-border); padding-bottom: 10px; margin-bottom: 15px; font-size: 18px; font-weight: bold; color: var(--tcs-blue); }
         .summary-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px; }
-        .summary-table th, .summary-table td { border: 1px solid var(--tcs-border); padding: 8px; text-align: center; }
-        .summary-table th { background: var(--tcs-light); }
+        .summary-table th, .summary-table td { border: 1px solid var(--tcs-border); padding: 10px; text-align: center; }
+        .summary-table th { background: var(--tcs-light); font-weight: 700; color: #333;}
         .modal-footer { display: flex; justify-content: flex-end; gap: 10px; }
     </style>
 </head>
@@ -276,7 +284,6 @@ $chapter_display = !empty($registration['chapter_number']) ? ' - Chapter ' . $re
         
         <div class="left-panel">
             <div class="section-bar">
-                <!-- 🟢 UPDATED UI to show Chapter Context -->
                 <div>Section: <span id="sectionName"><?php echo htmlspecialchars($registration['category_code']) . $chapter_display; ?></span></div>
                 <div style="cursor: pointer;" onclick="confirmExit()">Exit Exam <i class="fas fa-sign-out-alt"></i></div>
             </div>
@@ -286,8 +293,7 @@ $chapter_display = !empty($registration['chapter_number']) ? ' - Chapter ' . $re
                 <div class="marks-info" id="qMarksDisplay">Marks: +1.0</div>
             </div>
             
-            <div class="question-body" id="questionContainer">
-                </div>
+            <div class="question-body" id="questionContainer"></div>
 
             <div class="actions-footer">
                 <div class="left-actions">
@@ -314,6 +320,10 @@ $chapter_display = !empty($registration['chapter_number']) ? ' - Chapter ' . $re
                     <strong><?php echo htmlspecialchars($candidate_name); ?></strong>
                     Roll: <?php echo htmlspecialchars($roll_number); ?><br>
                     <?php echo htmlspecialchars($registration['category_name']); ?>
+                    <div class="meta-tags">
+                        <div class="meta-tag"><i class="fas fa-database"></i> <?php echo $total_questions; ?> Qs</div>
+                        <div class="meta-tag"><i class="fas fa-star"></i> <?php echo $total_marks; ?> Marks</div>
+                    </div>
                 </div>
             </div>
 
@@ -332,8 +342,7 @@ $chapter_display = !empty($registration['chapter_number']) ? ' - Chapter ' . $re
 
             <div class="palette-container">
                 <div class="palette-title">Question Palette:</div>
-                <div class="palette-grid" id="paletteGrid">
-                    </div>
+                <div class="palette-grid" id="paletteGrid"></div>
             </div>
 
             <div class="submit-box">
@@ -344,28 +353,28 @@ $chapter_display = !empty($registration['chapter_number']) ? ' - Chapter ' . $re
 
     <div class="modal-overlay" id="submitModal">
         <div class="modal-content">
-            <div class="modal-header">Exam Summary</div>
-            <p style="margin-bottom: 15px; font-size: 14px;">Please verify your exam summary before final submission.</p>
+            <div class="modal-header">Exam Submission Summary</div>
+            <p style="margin-bottom: 15px; font-size: 14px;">You are about to submit an exam containing <b><?php echo $total_questions; ?> questions</b> worth a total of <b><?php echo $total_marks; ?> marks</b>. Please verify your summary below.</p>
             <table class="summary-table">
                 <tr>
-                    <th>Total Questions</th>
+                    <th>Total Qs</th>
                     <th>Answered</th>
                     <th>Not Answered</th>
                     <th>Marked for Review</th>
                     <th>Not Visited</th>
                 </tr>
                 <tr>
-                    <td><?php echo $total_questions; ?></td>
-                    <td id="modAns">0</td>
-                    <td id="modNotAns">0</td>
-                    <td id="modRev">0</td>
+                    <td style="font-weight: bold;"><?php echo $total_questions; ?></td>
+                    <td id="modAns" style="color: var(--ans-green); font-weight: bold;">0</td>
+                    <td id="modNotAns" style="color: var(--not-ans-red); font-weight: bold;">0</td>
+                    <td id="modRev" style="color: var(--rev-yellow); font-weight: bold;">0</td>
                     <td id="modNotVis">0</td>
                 </tr>
             </table>
             <p style="margin-bottom: 20px; font-size: 14px; color: var(--not-ans-red); font-weight: bold;">Are you sure you want to submit the exam? No changes will be allowed after submission.</p>
             <div class="modal-footer">
                 <button class="btn" onclick="hideModal()">No, Go Back</button>
-                <button class="btn btn-primary" onclick="executeSubmission()">Yes, Submit</button>
+                <button class="btn btn-primary" onclick="executeSubmission()">Yes, Submit Final Exam</button>
             </div>
         </div>
     </div>
@@ -468,8 +477,8 @@ $chapter_display = !empty($registration['chapter_number']) ? ' - Chapter ' . $re
             visited[q.id] = true;
             tempSelection = answers[q.id] || null;
 
-            document.getElementById('qNumberDisplay').innerText = `Question No. ${idx + 1}`;
-            document.getElementById('qMarksDisplay').innerText = `Marks: +${q.marks}.0`;
+            document.getElementById('qNumberDisplay').innerText = `Question No. ${idx + 1} of ${totalQuestions}`;
+            document.getElementById('qMarksDisplay').innerText = `Marks: +${q.marks}`;
             
             let optionsHtml = '';
             if (q.options) {

@@ -21,12 +21,24 @@ $error = '';
 $categories = [];
 $centers = [];
 $course_groups = [];
+$qCounts = []; // 🟢 Store question counts
 
 try {
-    // 🟢 NEW: Fetch chapter_count for dynamic dropdowns
     $categories = $pdo->query("SELECT id, category_code, category_name, duration_minutes, chapter_count FROM exam_categories ORDER BY category_code ASC")->fetchAll(PDO::FETCH_ASSOC);
     $centers = $pdo->query("SELECT id, center_code, center_name, city, capacity FROM exam_centers WHERE is_active = true ORDER BY center_name")->fetchAll(PDO::FETCH_ASSOC);
     
+    // 🟢 NEW: Fetch exact question counts per module and chapter
+    $qCountsStmt = $pdo->query("SELECT category_id, chapter_number, COUNT(*) as q_count FROM questions WHERE is_active = 1 GROUP BY category_id, chapter_number");
+    while ($row = $qCountsStmt->fetch(PDO::FETCH_ASSOC)) {
+        $cid = $row['category_id'];
+        $cnum = $row['chapter_number'] ?: 'unassigned';
+        if (!isset($qCounts[$cid])) {
+            $qCounts[$cid] = ['total' => 0, 'chapters' => []];
+        }
+        $qCounts[$cid]['chapters'][$cnum] = $row['q_count'];
+        $qCounts[$cid]['total'] += $row['q_count'];
+    }
+
     // --- SMART CATEGORIZATION ENGINE ---
     $course_groups = [
         'O-Level Modules' => [],
@@ -57,7 +69,7 @@ try {
 
     if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $category_id = $_POST['category_id']; 
-        $chapter_number = !empty($_POST['chapter_number']) ? $_POST['chapter_number'] : null; // 🟢 Capture Chapter
+        $chapter_number = !empty($_POST['chapter_number']) ? $_POST['chapter_number'] : null; // Capture Chapter
         $conductor_name = trim($_POST['conductor_name']);
         
         $is_active = isset($_POST['is_active']) ? 1 : 0;
@@ -90,7 +102,6 @@ try {
             $cat = array_filter($categories, fn($c) => $c['id'] == $category_id);
             $cat = reset($cat);
             
-            // 🟢 NEW: Add Chapter suffix to Exam Code if applicable
             $chapter_suffix = $chapter_number ? "-C{$chapter_number}" : "";
             
             if ($is_practice) {
@@ -111,7 +122,6 @@ try {
             // Atomic Transaction to prevent race conditions
             $pdo->beginTransaction();
             
-            // 🟢 NEW: Insert chapter_number into exam_sessions
             $stmt = $pdo->prepare("
                 INSERT INTO exam_sessions (exam_code, category_id, chapter_number, center_id, exam_date, start_time, end_time, total_seats, is_active, created_by, is_practice, exam_conductor)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -271,7 +281,6 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
         }
         .section-title::after { content: ''; flex: 1; height: 2px; background: linear-gradient(90deg, var(--primary-bg), transparent); border-radius: 2px; }
 
-        /* 🟢 UPDATED GRID: 3 Columns for Top Section */
         .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 35px; }
         .form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-bottom: 35px; }
         .form-group.full-width { grid-column: 1 / -1; }
@@ -427,15 +436,16 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
                     </div>
                 </div>
 
-                <!-- 🟢 NEW: CHAPTER SELECTION FOR EXAMS -->
                 <div class="form-group">
                     <label>Specific Chapter (Optional)</label>
                     <div class="input-wrap">
-                        <select name="chapter_number" id="chapterId" class="form-control" disabled>
+                        <select name="chapter_number" id="chapterId" class="form-control" disabled onchange="updateQuestionHint()">
                             <option value="">Entire Module (All Chapters)</option>
                         </select>
                         <i class="fas fa-bookmark input-icon"></i>
                     </div>
+                    <!-- 🟢 NEW: Question Count Display Area -->
+                    <div id="question_hint" style="margin-top: 8px; font-size: 12px; color: var(--primary); font-weight: 700;"></div>
                 </div>
             </div>
 
@@ -518,8 +528,10 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
     <script>
         const categoryData = <?php echo json_encode($course_groups); ?>;
         const centerCapacities = <?php echo json_encode($cenData); ?>;
+        
+        // 🟢 Pass PHP question counts to JavaScript
+        const questionCounts = <?php echo json_encode($qCounts); ?>;
 
-        // Toggle Practice Mode Visibility & Requirements smoothly
         function togglePracticeMode() {
             const isPractice = document.getElementById('practiceToggle').checked;
             const formalSettings = document.getElementById('formal-settings');
@@ -547,7 +559,6 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
                     const opt = document.createElement('option');
                     opt.value = mod.id;
                     opt.textContent = mod.category_code + ' - ' + mod.category_name;
-                    // 🟢 NEW: Add chapter count mapping for JS
                     opt.dataset.chapters = mod.chapter_count || 1;
                     modSelect.appendChild(opt);
                 });
@@ -555,10 +566,9 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
             } else { 
                 modSelect.disabled = true; 
             }
-            updateChapters(); // 🟢 Trigger chapter update
+            updateChapters();
         }
 
-        // 🟢 NEW: Read chapter count and populate dropdown
         function updateChapters() {
             const modSelect = document.getElementById('category_id');
             const chapSelect = document.getElementById('chapterId');
@@ -579,6 +589,28 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
             } else {
                 chapSelect.disabled = true;
             }
+            updateQuestionHint(); // Trigger question count refresh
+        }
+
+        // 🟢 NEW: Update Question Hint Text underneath the Dropdown
+        function updateQuestionHint() {
+            const modId = document.getElementById('category_id').value;
+            const chapId = document.getElementById('chapterId').value;
+            const hintEl = document.getElementById('question_hint');
+            
+            if(!modId || !questionCounts[modId]) {
+                hintEl.innerHTML = '<i class="fas fa-exclamation-circle" style="color:var(--warning);"></i> 0 questions found. Please add questions first.';
+                return;
+            }
+            
+            let count = 0;
+            if(chapId === "") {
+                count = questionCounts[modId].total;
+                hintEl.innerHTML = `<i class="fas fa-database"></i> This exam will pull <b>${count}</b> total active questions.`;
+            } else {
+                count = questionCounts[modId].chapters[chapId] || 0;
+                hintEl.innerHTML = `<i class="fas fa-bookmark"></i> This exam will pull exactly <b>${count}</b> active questions.`;
+            }
         }
 
         function updateCapacityHint() {
@@ -596,11 +628,9 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
             }
         }
 
-        // Initialize state on load
         window.onload = function() {
             togglePracticeMode();
             
-            // Re-populate dropdowns if there was a validation error on POST
             const preselectedModuleId = "<?php echo isset($_POST['category_id']) ? $_POST['category_id'] : ''; ?>";
             const preselectedChapterId = "<?php echo isset($_POST['chapter_number']) ? $_POST['chapter_number'] : ''; ?>";
             
@@ -620,8 +650,6 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
                 }
             }
             updateCapacityHint();
-            
-            // Add listeners for capacity updates only
             document.getElementById('center_id').addEventListener('change', updateCapacityHint);
         };
     </script>

@@ -27,7 +27,7 @@ try {
     $categories = $pdo->query("SELECT id, category_code, category_name, duration_minutes, chapter_count FROM exam_categories ORDER BY category_code ASC")->fetchAll(PDO::FETCH_ASSOC);
     $centers = $pdo->query("SELECT id, center_code, center_name, city, capacity FROM exam_centers WHERE is_active = true ORDER BY center_name")->fetchAll(PDO::FETCH_ASSOC);
     
-    // 🟢 NEW: Fetch exact question counts per module and chapter
+    // Fetch exact question counts per module and chapter
     $qCountsStmt = $pdo->query("SELECT category_id, chapter_number, COUNT(*) as q_count FROM questions WHERE is_active = 1 GROUP BY category_id, chapter_number");
     while ($row = $qCountsStmt->fetch(PDO::FETCH_ASSOC)) {
         $cid = $row['category_id'];
@@ -69,7 +69,7 @@ try {
 
     if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $category_id = $_POST['category_id']; 
-        $chapter_number = !empty($_POST['chapter_number']) ? $_POST['chapter_number'] : null; // Capture Chapter
+        $chapter_number = !empty($_POST['chapter_number']) ? $_POST['chapter_number'] : null; 
         $conductor_name = trim($_POST['conductor_name']);
         
         $is_active = isset($_POST['is_active']) ? 1 : 0;
@@ -86,9 +86,16 @@ try {
             $center_id = $_POST['center_id'];
             $exam_date = $_POST['exam_date'];
             $start_time = $_POST['start_time'];
-            $exam_duration = (int)$_POST['exam_duration']; // 🟢 Capture Duration
             
-            // 🟢 AUTOMATICALLY CALCULATE END TIME based on start time + duration
+            // 🟢 CAPTURE CUSTOM OR PRE-SET DURATION
+            $duration_choice = $_POST['exam_duration'];
+            if ($duration_choice === 'custom') {
+                $exam_duration = (int)$_POST['custom_duration'];
+            } else {
+                $exam_duration = (int)$duration_choice;
+            }
+            
+            // Calculate End Time
             $end_time = date('H:i:s', strtotime($start_time . " + $exam_duration minutes"));
             
             $total_seats = (int)$_POST['total_seats'];
@@ -99,8 +106,8 @@ try {
             $error = "Please select a specific Module.";
         } elseif (empty($conductor_name)) { 
             $error = "Please provide the Exam Conductor's name.";
-        } elseif (!$is_practice && (empty($center_id) || empty($exam_date) || empty($start_time) || empty($exam_duration))) {
-            $error = "Please fill in all required fields for a formal exam.";
+        } elseif (!$is_practice && (empty($center_id) || empty($exam_date) || empty($start_time) || empty($exam_duration) || $exam_duration <= 0)) {
+            $error = "Please fill in all required fields and ensure duration is valid for a formal exam.";
         } else {
             $cat = array_filter($categories, fn($c) => $c['id'] == $category_id);
             $cat = reset($cat);
@@ -122,7 +129,7 @@ try {
                 }
             }
             
-            // Atomic Transaction to prevent race conditions
+            // Atomic Transaction
             $pdo->beginTransaction();
             
             $stmt = $pdo->prepare("
@@ -158,6 +165,7 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
+            /* 🟢 COORDINATOR PURPLE THEME */
             --primary: #7C3AED;
             --primary-light: #8B5CF6;
             --primary-dark: #5B21B6;
@@ -305,7 +313,7 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
         select.form-control { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 18px center; }
         select:disabled { background-color: #F8FAFC; color: #94A3B8; cursor: not-allowed; border-color: #E2E8F0; }
 
-        input[type="date"].form-control, input[type="time"].form-control { padding-left: 50px; }
+        input[type="date"].form-control, input[type="time"].form-control, input[type="number"].form-control { padding-left: 50px; }
         input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webkit-calendar-picker-indicator { cursor: pointer; opacity: 0.5; transition: 0.2s;}
         input[type="date"]:focus::-webkit-calendar-picker-indicator, input[type="time"]:focus::-webkit-calendar-picker-indicator { opacity: 1; }
 
@@ -485,11 +493,10 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
                         </div>
                     </div>
                     
-                    <!-- 🟢 NEW: Exam Duration Dropdown replacing End Time -->
                     <div class="form-group">
                         <label>Exam Duration <span style="color:var(--danger);">*</span></label>
                         <div class="input-wrap">
-                            <select name="exam_duration" id="exam_duration" class="form-control req-formal" required>
+                            <select name="exam_duration" id="exam_duration" class="form-control req-formal" required onchange="toggleCustomDuration()">
                                 <option value="">Select Duration...</option>
                                 <option value="30" <?php echo (isset($_POST['exam_duration']) && $_POST['exam_duration'] == '30') ? 'selected' : ''; ?>>30 Minutes</option>
                                 <option value="40" <?php echo (isset($_POST['exam_duration']) && $_POST['exam_duration'] == '40') ? 'selected' : ''; ?>>40 Minutes</option>
@@ -499,13 +506,23 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
                                 <option value="120" <?php echo (isset($_POST['exam_duration']) && $_POST['exam_duration'] == '120') ? 'selected' : ''; ?>>120 Minutes (2 Hours)</option>
                                 <option value="150" <?php echo (isset($_POST['exam_duration']) && $_POST['exam_duration'] == '150') ? 'selected' : ''; ?>>150 Minutes (2.5 Hours)</option>
                                 <option value="180" <?php echo (isset($_POST['exam_duration']) && $_POST['exam_duration'] == '180') ? 'selected' : ''; ?>>180 Minutes (3 Hours)</option>
+                                <option value="custom" <?php echo (isset($_POST['exam_duration']) && $_POST['exam_duration'] == 'custom') ? 'selected' : ''; ?>>Custom Duration...</option>
                             </select>
                             <i class="fas fa-stopwatch input-icon"></i>
                         </div>
                     </div>
+
+                    <!-- 🟢 NEW: Hidden Custom Duration Input -->
+                    <div class="form-group" id="customDurationGroup" style="display: none;">
+                        <label>Custom Duration (Minutes) <span style="color:var(--danger);">*</span></label>
+                        <div class="input-wrap">
+                            <input type="number" name="custom_duration" id="custom_duration" class="form-control" min="1" placeholder="E.g., 75" value="<?php echo isset($_POST['custom_duration']) ? $_POST['custom_duration'] : ''; ?>">
+                            <i class="fas fa-keyboard input-icon"></i>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="form-group full-width">
+                <div class="form-group full-width" style="margin-top: -10px;">
                     <label>Total Available Seats <span style="color:var(--danger);">*</span></label>
                     <div class="input-wrap">
                         <input type="number" name="total_seats" id="total_seats" class="form-control req-formal" min="1" placeholder="Enter maximum seat limit..." required value="<?php echo isset($_POST['total_seats']) ? $_POST['total_seats'] : ''; ?>">
@@ -540,8 +557,27 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
     <script>
         const categoryData = <?php echo json_encode($course_groups); ?>;
         const centerCapacities = <?php echo json_encode($cenData); ?>;
-        
         const questionCounts = <?php echo json_encode($qCounts); ?>;
+
+        // 🟢 NEW: Toggle Custom Duration field based on dropdown selection
+        function toggleCustomDuration() {
+            const durSelect = document.getElementById('exam_duration');
+            const customGroup = document.getElementById('customDurationGroup');
+            const customInput = document.getElementById('custom_duration');
+            const isPractice = document.getElementById('practiceToggle').checked;
+            
+            if (durSelect.value === 'custom') {
+                customGroup.style.display = 'block';
+                if (!isPractice) {
+                    customInput.setAttribute('required', 'required');
+                    customInput.classList.add('req-formal');
+                }
+            } else {
+                customGroup.style.display = 'none';
+                customInput.removeAttribute('required');
+                customInput.classList.remove('req-formal');
+            }
+        }
 
         function togglePracticeMode() {
             const isPractice = document.getElementById('practiceToggle').checked;
@@ -552,10 +588,18 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
                 formalSettings.style.opacity = '0';
                 setTimeout(() => { formalSettings.style.display = 'none'; }, 300);
                 formalInputs.forEach(input => input.removeAttribute('required'));
+                
+                // Clear custom duration requirement if hidden by practice mode
+                document.getElementById('custom_duration').removeAttribute('required');
             } else {
                 formalSettings.style.display = 'block';
                 setTimeout(() => { formalSettings.style.opacity = '1'; }, 10);
                 formalInputs.forEach(input => input.setAttribute('required', 'required'));
+                
+                // Re-apply required to custom duration if 'custom' is selected
+                if (document.getElementById('exam_duration').value === 'custom') {
+                    document.getElementById('custom_duration').setAttribute('required', 'required');
+                }
             }
         }
 
@@ -640,6 +684,7 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
 
         window.onload = function() {
             togglePracticeMode();
+            toggleCustomDuration(); // 🟢 Trigger custom duration UI on load if needed
             
             const preselectedModuleId = "<?php echo isset($_POST['category_id']) ? $_POST['category_id'] : ''; ?>";
             const preselectedChapterId = "<?php echo isset($_POST['chapter_number']) ? $_POST['chapter_number'] : ''; ?>";

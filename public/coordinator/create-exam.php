@@ -81,11 +81,16 @@ try {
             $start_time = '00:00:00';
             $end_time = '23:59:59';
             $total_seats = 999999; 
+            $exam_duration = 0;
         } else {
             $center_id = $_POST['center_id'];
             $exam_date = $_POST['exam_date'];
             $start_time = $_POST['start_time'];
-            $end_time = $_POST['end_time'];
+            $exam_duration = (int)$_POST['exam_duration']; // 🟢 Capture Duration
+            
+            // 🟢 AUTOMATICALLY CALCULATE END TIME based on start time + duration
+            $end_time = date('H:i:s', strtotime($start_time . " + $exam_duration minutes"));
+            
             $total_seats = (int)$_POST['total_seats'];
         }
         
@@ -94,10 +99,8 @@ try {
             $error = "Please select a specific Module.";
         } elseif (empty($conductor_name)) { 
             $error = "Please provide the Exam Conductor's name.";
-        } elseif (!$is_practice && (empty($center_id) || empty($exam_date) || empty($start_time) || empty($end_time))) {
+        } elseif (!$is_practice && (empty($center_id) || empty($exam_date) || empty($start_time) || empty($exam_duration))) {
             $error = "Please fill in all required fields for a formal exam.";
-        } elseif (!$is_practice && $end_time <= $start_time) {
-            $error = "End time must be logically after the start time.";
         } else {
             $cat = array_filter($categories, fn($c) => $c['id'] == $category_id);
             $cat = reset($cat);
@@ -155,7 +158,6 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
-            /* 🟢 COORDINATOR PURPLE THEME */
             --primary: #7C3AED;
             --primary-light: #8B5CF6;
             --primary-dark: #5B21B6;
@@ -444,7 +446,6 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
                         </select>
                         <i class="fas fa-bookmark input-icon"></i>
                     </div>
-                    <!-- 🟢 NEW: Question Count Display Area -->
                     <div id="question_hint" style="margin-top: 8px; font-size: 12px; color: var(--primary); font-weight: 700;"></div>
                 </div>
             </div>
@@ -484,11 +485,22 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
                         </div>
                     </div>
                     
+                    <!-- 🟢 NEW: Exam Duration Dropdown replacing End Time -->
                     <div class="form-group">
-                        <label>End Time <span style="color:var(--danger);">*</span></label>
+                        <label>Exam Duration <span style="color:var(--danger);">*</span></label>
                         <div class="input-wrap">
-                            <input type="time" name="end_time" id="end_time" class="form-control req-formal" required value="<?php echo isset($_POST['end_time']) ? $_POST['end_time'] : ''; ?>">
-                            <i class="fas fa-hourglass-end input-icon"></i>
+                            <select name="exam_duration" id="exam_duration" class="form-control req-formal" required>
+                                <option value="">Select Duration...</option>
+                                <option value="30" <?php echo (isset($_POST['exam_duration']) && $_POST['exam_duration'] == '30') ? 'selected' : ''; ?>>30 Minutes</option>
+                                <option value="40" <?php echo (isset($_POST['exam_duration']) && $_POST['exam_duration'] == '40') ? 'selected' : ''; ?>>40 Minutes</option>
+                                <option value="45" <?php echo (isset($_POST['exam_duration']) && $_POST['exam_duration'] == '45') ? 'selected' : ''; ?>>45 Minutes</option>
+                                <option value="60" <?php echo (isset($_POST['exam_duration']) && $_POST['exam_duration'] == '60') ? 'selected' : ''; ?>>60 Minutes (1 Hour)</option>
+                                <option value="90" <?php echo (isset($_POST['exam_duration']) && $_POST['exam_duration'] == '90') ? 'selected' : ''; ?>>90 Minutes (1.5 Hours)</option>
+                                <option value="120" <?php echo (isset($_POST['exam_duration']) && $_POST['exam_duration'] == '120') ? 'selected' : ''; ?>>120 Minutes (2 Hours)</option>
+                                <option value="150" <?php echo (isset($_POST['exam_duration']) && $_POST['exam_duration'] == '150') ? 'selected' : ''; ?>>150 Minutes (2.5 Hours)</option>
+                                <option value="180" <?php echo (isset($_POST['exam_duration']) && $_POST['exam_duration'] == '180') ? 'selected' : ''; ?>>180 Minutes (3 Hours)</option>
+                            </select>
+                            <i class="fas fa-stopwatch input-icon"></i>
                         </div>
                     </div>
                 </div>
@@ -529,7 +541,6 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
         const categoryData = <?php echo json_encode($course_groups); ?>;
         const centerCapacities = <?php echo json_encode($cenData); ?>;
         
-        // 🟢 Pass PHP question counts to JavaScript
         const questionCounts = <?php echo json_encode($qCounts); ?>;
 
         function togglePracticeMode() {
@@ -589,10 +600,9 @@ foreach($centers as $c) { $cenData[$c['id']] = $c['capacity']; }
             } else {
                 chapSelect.disabled = true;
             }
-            updateQuestionHint(); // Trigger question count refresh
+            updateQuestionHint();
         }
 
-        // 🟢 NEW: Update Question Hint Text underneath the Dropdown
         function updateQuestionHint() {
             const modId = document.getElementById('category_id').value;
             const chapId = document.getElementById('chapterId').value;

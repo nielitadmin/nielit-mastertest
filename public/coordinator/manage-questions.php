@@ -14,6 +14,55 @@ $message = '';
 $error = '';
 
 try {
+
+    // --- 🟢 NEW: Handle Individual Question Download ---
+    if (isset($_GET['download_id']) && is_numeric($_GET['download_id'])) {
+        $dl_id = $_GET['download_id'];
+        $dl_stmt = $pdo->prepare("SELECT q.*, ec.category_code, ec.category_name FROM questions q LEFT JOIN exam_categories ec ON q.category_id = ec.id WHERE q.id = ?");
+        $dl_stmt->execute([$dl_id]);
+        $dl_q = $dl_stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($dl_q) {
+            $opt_stmt = $pdo->prepare("SELECT * FROM question_options WHERE question_id = ? ORDER BY option_order ASC");
+            $opt_stmt->execute([$dl_id]);
+            $options = $opt_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $filename = "NIELIT_Question_" . $dl_id . ".txt";
+            header('Content-Type: text/plain');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+
+            echo "========================================================\r\n";
+            echo " NIELIT QUESTION EXPORT\r\n";
+            echo "========================================================\r\n";
+            echo "Question ID : #" . $dl_q['id'] . "\r\n";
+            echo "Module      : " . ($dl_q['category_code'] ?? 'Unassigned') . " - " . ($dl_q['category_name'] ?? 'General') . "\r\n";
+            echo "Chapter     : " . ($dl_q['chapter_number'] ? "Chapter " . $dl_q['chapter_number'] : "None") . "\r\n";
+            echo "Type        : " . strtoupper($dl_q['question_type']) . "\r\n";
+            echo "Difficulty  : " . ucfirst($dl_q['difficulty_level']) . "\r\n";
+            echo "Marks       : " . $dl_q['marks'] . "\r\n";
+            echo "Status      : " . ($dl_q['is_active'] ? "Active" : "Disabled") . "\r\n";
+            echo "========================================================\r\n\r\n";
+            echo "QUESTION TEXT:\r\n";
+            echo strip_tags($dl_q['question_text']) . "\r\n\r\n";
+            
+            echo "OPTIONS:\r\n";
+            if(empty($options)) {
+                echo "(No options available)\r\n";
+            } else {
+                foreach ($options as $idx => $opt) {
+                    $mark = $opt['is_correct'] ? "[ ✓ ]" : "[   ]";
+                    echo chr(65 + $idx) . ". " . $mark . " " . strip_tags($opt['option_text']) . "\r\n";
+                }
+            }
+            
+            if (!empty($dl_q['explanation'])) {
+                echo "\r\nEXPLANATION:\r\n";
+                echo strip_tags($dl_q['explanation']) . "\r\n";
+            }
+            exit();
+        }
+    }
+
     // --- Add New Module (Category) ---
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_module'])) {
         $mod_code = strtoupper(trim($_POST['module_code']));
@@ -42,7 +91,7 @@ try {
         }
     }
 
-    // --- 🟢 NEW: Edit Existing Module ---
+    // --- Edit Existing Module ---
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_module'])) {
         $cat_id = (int)$_POST['edit_module_id'];
         $mod_code = strtoupper(trim($_POST['edit_module_code']));
@@ -170,7 +219,7 @@ try {
         'Other' => ['title' => 'Other Modules', 'icon' => 'fa-folder-open', 'theme' => 'gray', 'modules' => [], 'q_count' => 0]
     ];
 
-    // 🟢 Fetch duration and marks as well so they can be passed to the edit modal
+    // Fetch duration and marks as well so they can be passed to the edit modal
     $categories = $pdo->query("SELECT id, category_code, category_name, duration_minutes, total_marks, chapter_count FROM exam_categories ORDER BY category_code ASC")->fetchAll(PDO::FETCH_ASSOC);
     
     foreach ($categories as $cat) {
@@ -424,6 +473,11 @@ try {
 
         .actions { display: flex; gap: 8px; justify-content: flex-end;}
         .btn-action { width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; transition: all 0.2s; font-size: 14px; cursor: pointer; }
+        
+        /* 🟢 NEW: Download Button Styles */
+        .btn-download { background: #E0F2FE; color: #0284C7; }
+        .btn-download:hover { background: #0284C7; color: white; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(2, 132, 199, 0.2); }
+        
         .btn-edit { background: var(--warning-bg); color: var(--warning); }
         .btn-edit:hover { background: var(--warning); color: white; transform: translateY(-2px); }
         .btn-deactivate { background: var(--danger-bg); color: var(--danger); }
@@ -710,6 +764,10 @@ try {
                                                                 </td>
                                                                 <td>
                                                                     <div class="actions">
+                                                                        <!-- 🟢 NEW: Download Question Button -->
+                                                                        <a href="?download_id=<?php echo $q['id']; ?>" class="btn-action btn-download" title="Download Question">
+                                                                            <i class="fas fa-download"></i>
+                                                                        </a>
                                                                         <a href="edit-question.php?id=<?php echo $q['id']; ?>" class="btn-action btn-edit" title="Edit Question">
                                                                             <i class="fas fa-pen"></i>
                                                                         </a>
@@ -781,6 +839,10 @@ try {
                                                             </td>
                                                             <td>
                                                                 <div class="actions">
+                                                                    <!-- 🟢 NEW: Download Question Button -->
+                                                                    <a href="?download_id=<?php echo $q['id']; ?>" class="btn-action btn-download" title="Download Question">
+                                                                        <i class="fas fa-download"></i>
+                                                                    </a>
                                                                     <a href="edit-question.php?id=<?php echo $q['id']; ?>" class="btn-action btn-edit" title="Edit Question"><i class="fas fa-pen"></i></a>
                                                                     <?php if ($q['is_active']): ?>
                                                                         <a href="?delete=<?php echo $q['id']; ?>" class="btn-action btn-deactivate" onclick="return confirm('Deactivate this question?')" title="Deactivate"><i class="fas fa-power-off"></i></a>
@@ -885,7 +947,6 @@ try {
         function openModal() { document.getElementById('moduleModal').style.display = 'flex'; }
         function closeModal() { document.getElementById('moduleModal').style.display = 'none'; }
 
-        // 🟢 NEW: Edit Modal Logic
         function openEditModal(id, code, name, duration, marks, chapters) {
             document.getElementById('editModuleId').value = id;
             document.getElementById('editModuleCode').value = code;

@@ -62,7 +62,7 @@ try {
         $q_params[] = $registration['chapter_number'];
     }
     
-    // 🟢 LIMIT 100 REMOVED: Load the exact number of questions present in this context
+    // Load the exact number of questions present in this context
     $q_query .= " ORDER BY RAND()"; 
     
     $questions_stmt = $pdo->prepare($q_query);
@@ -86,8 +86,7 @@ try {
         $session_timer_key = 'exam_end_' . $registration['registration_id'];
         if (!isset($_SESSION[$session_timer_key])) {
             
-            // 🟢 DYNAMIC DURATION: NIELIT standard is 1.2 mins per question (120 mins / 100 qs).
-            // If it's an entire module, use standard duration. If it's a chapter, scale time dynamically!
+            // DYNAMIC DURATION: NIELIT standard is 1.2 mins per question
             $duration_mins = empty($registration['chapter_number']) ? $registration['duration_minutes'] : ceil($total_questions * 1.2);
             
             $_SESSION[$session_timer_key] = time() + ($duration_mins * 60);
@@ -150,8 +149,8 @@ $chapter_display = !empty($registration['chapter_number']) ? ' - Chapter ' . $re
             color: white; text-align: center;
         }
         #start-overlay h2 { font-size: 32px; margin-bottom: 10px; color: #60A5FA; }
-        #start-overlay p { font-size: 16px; margin-bottom: 30px; max-width: 500px; color: #CBD5E1; line-height: 1.5; }
-        .btn-start-fs { background: #16A34A; color: white; padding: 15px 40px; font-size: 18px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 4px 15px rgba(22, 163, 74, 0.4); transition: 0.3s; }
+        #start-overlay p { font-size: 16px; margin-bottom: 30px; max-width: 550px; color: #CBD5E1; line-height: 1.5; }
+        .btn-start-fs { background: #16A34A; color: white; padding: 15px 40px; font-size: 18px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 4px 15px rgba(22, 163, 74, 0.4); transition: 0.3s; margin-top: 10px;}
         .btn-start-fs:hover { background: #15803D; transform: scale(1.05); }
 
         /* HEADER */
@@ -269,10 +268,14 @@ $chapter_display = !empty($registration['chapter_number']) ? ' - Chapter ' . $re
 </head>
 <body>
 
+    <!-- 🟢 FIXED: TWO-STEP CAMERA / FULLSCREEN OVERLAY -->
     <div id="start-overlay">
         <h2><i class="fas fa-lock" style="margin-right: 10px;"></i> Secured Exam Environment</h2>
-        <p>This exam operates in a strict, locked full-screen mode with active AI Video Monitoring. Switching tabs, refreshing, or exiting full screen will be recorded by the system.<br><br><b>Please allow Camera Permissions on the next screen. Your time will start ticking as soon as you enter.</b></p>
-        <button class="btn-start-fs" onclick="launchFullScreenExam()">Allow Camera & Start Exam</button>
+        <p id="overlay-instructions">This exam operates in a strict, locked full-screen mode with active AI Video Monitoring. Switching tabs, refreshing, or exiting full screen will be recorded by the system.<br><br><b>Step 1: Allow Camera Permissions to proceed.</b></p>
+        
+        <button class="btn-start-fs" id="initBtn" onclick="initCamera()"><i class="fas fa-camera"></i> Allow Camera</button>
+        
+        <button class="btn-start-fs" id="startBtn" onclick="launchFullScreenExam()" style="display:none; background: var(--ans-blue);"><i class="fas fa-expand"></i> Enter Fullscreen & Start</button>
     </div>
 
     <div class="header">
@@ -384,8 +387,6 @@ $chapter_display = !empty($registration['chapter_number']) ? ' - Chapter ' . $re
         const registrationId = <?php echo $registration['registration_id']; ?>;
         const examId = <?php echo $exam_id; ?>;
         const totalQuestions = <?php echo $total_questions; ?>;
-        
-        // This variable now perfectly aligns with the wall-clock time if it's a formal exam
         const examEndTime = <?php echo $end_time * 1000; ?>; 
         
         let currentIdx = 0;
@@ -424,17 +425,25 @@ $chapter_display = !empty($registration['chapter_number']) ? ' - Chapter ' . $re
             return content;
         }
 
-        // Start Dummy Video Feed
-        function startDummyProctoring() {
-            const video = document.getElementById('dummyProctorVideo');
+        // 🟢 FIX: 2-STEP CAMERA PERMISSION 
+        function initCamera() {
             if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
                 navigator.mediaDevices.getUserMedia({ video: true })
                 .then(function(stream) {
-                    video.srcObject = stream;
+                    // Camera allowed
+                    document.getElementById('dummyProctorVideo').srcObject = stream;
+                    
+                    // Switch UI
+                    document.getElementById('initBtn').style.display = 'none';
+                    document.getElementById('startBtn').style.display = 'inline-block';
+                    
+                    document.getElementById('overlay-instructions').innerHTML = "<span style='color:#4ADE80;'><i class='fas fa-check-circle'></i> Camera access verified.</span><br><br><b>Click below to enter Fullscreen mode and officially start your exam time.</b>";
                 })
                 .catch(function(err) {
-                    console.log("Camera access denied or unavailable.");
+                    alert("Camera access is required. Please allow camera permissions in your browser URL bar and try again.");
                 });
+            } else {
+                alert("Your browser does not support camera access.");
             }
         }
 
@@ -450,8 +459,6 @@ $chapter_display = !empty($registration['chapter_number']) ? ' - Chapter ' . $re
             if (!hasStarted && questions.length > 0) {
                 hasStarted = true;
                 Object.keys(answers).forEach(qId => visited[qId] = true);
-                
-                startDummyProctoring(); 
                 
                 renderQuestion(0);
                 startTimer();

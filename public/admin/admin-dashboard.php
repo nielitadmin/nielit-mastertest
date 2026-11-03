@@ -471,6 +471,9 @@ try {
                     <a href="manage-centers.php" class="btn-modern" style="grid-column: 1 / -1; justify-content: center;">
                         <i class="fas fa-map-marked-alt"></i> Manage Test Centers
                     </a>
+                    <a href="/test-payment.php" class="btn-modern" style="grid-column: 1 / -1; justify-content: center; background: #EEF2FF; border-color: #C7D2FE; color: #4338CA;">
+                        <i class="fas fa-credit-card"></i> Payment Hub Test & Settings
+                    </a>
                 </div>
             </div>
 

@@ -248,12 +248,17 @@ try {
                                 </td>
                                 <td style="text-align: center;">
                                     <?php if ($status == 'Pending Payment'): ?>
-                                        <form method="POST" onsubmit="return confirm('Are you sure you want to permanently delete this unpaid booking request?');" style="margin: 0;">
-                                            <input type="hidden" name="delete_booking_id" value="<?php echo $b['id']; ?>">
-                                            <button type="submit" class="btn-delete" title="Cancel & Delete Booking">
-                                                <i class="fas fa-trash-alt"></i>
-                                            </button>
-                                        </form>
+                                        <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
+                                            <a href="tp-payment-gateway.php?booking_id=<?php echo $b['id']; ?>" style="display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; background: #0D9488; color: white; border-radius: 8px; font-size: 12px; font-weight: 700; text-decoration: none;" title="Pay Booking Fee">
+                                                <i class="fas fa-credit-card"></i> Pay Now
+                                            </a>
+                                            <form method="POST" onsubmit="return confirm('Are you sure you want to permanently delete this unpaid booking request?');" style="margin: 0;">
+                                                <input type="hidden" name="delete_booking_id" value="<?php echo $b['id']; ?>">
+                                                <button type="submit" class="btn-delete" title="Cancel & Delete Booking">
+                                                    <i class="fas fa-trash-alt"></i>
+                                                </button>
+                                            </form>
+                                        </div>
                                     <?php else: ?>
                                         <span style="color: var(--text-muted); font-size: 12px; font-weight: 700; background: var(--bg-body); padding: 4px 8px; border-radius: 6px;"><i class="fas fa-lock"></i> Locked</span>
                                     <?php endif; ?>
